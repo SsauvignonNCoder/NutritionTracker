@@ -3,8 +3,9 @@ import {
   BookOpen, CalendarDays, ShoppingCart, ChevronDown, ChevronLeft, ChevronRight,
   Clock, Sun, Moon, X, ExternalLink,
 } from 'lucide-react';
-import { RECIPES, RECIPES_BY_ID, MEAL_TYPES } from './data/recipes.js';
+import { RECIPES, RECIPES_BY_ID, MEAL_TYPES, CATEGORIES } from './data/recipes.js';
 import { WEEKS, getLatestWeek } from './data/weeks.js';
+import { buildShoppingList } from './lib/shoppingList.js';
 
 // ---------- Тема ----------
 const THEMES = {
@@ -271,7 +272,7 @@ function RecipeDetail({ recipe, onClose }) {
               fontSize: 14,
             }}>
               <span style={{ color: t.TEXT, minWidth: 0 }}>{ing.name}</span>
-              <span style={{ color: t.TEXT_DIM, fontFamily: "'SF Mono', monospace", fontSize: 13, flexShrink: 0, textAlign: 'right' }}>{ing.amount}</span>
+              <span style={{ color: t.TEXT_DIM, fontFamily: "'SF Mono', monospace", fontSize: 13, flexShrink: 0, textAlign: 'right' }}>{ing.display}</span>
             </div>
           ))}
         </div>
@@ -601,43 +602,79 @@ function RecipesTab({ onOpenRecipe }) {
 
 // ---------- Вкладка: Покупки ----------
 
-function ShoppingGroup({ title, items }) {
+function ShoppingGroup({ title, items, checkedMap, onToggle }) {
   const t = useTheme();
-  const [checked, setChecked] = useState({});
-
-  const toggle = (i) => setChecked((c) => ({ ...c, [i]: !c[i] }));
 
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: t.TEXT, marginBottom: 8 }}>{title}</div>
       <div style={{ background: t.BG_RAISED, border: `1px solid ${t.BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
-        {items.map((item, i) => (
-          <button
-            key={i}
-            onClick={() => toggle(i)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-              padding: '11px 14px', background: 'transparent', border: 'none',
-              borderBottom: i === items.length - 1 ? 'none' : `1px solid ${t.BORDER}`,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            <span style={{
-              flexShrink: 0, width: 18, height: 18, borderRadius: 5,
-              border: `2px solid ${checked[i] ? t.HERB : t.TEXT_FAINT}`,
-              background: checked[i] ? t.HERB : 'transparent',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#FFF',
-            }}>
-              {checked[i] ? '✓' : ''}
-            </span>
-            <span style={{
-              fontSize: 13.5, color: checked[i] ? t.TEXT_FAINT : t.TEXT,
-              textDecoration: checked[i] ? 'line-through' : 'none',
-            }}>
-              {item}
-            </span>
-          </button>
-        ))}
+        {items.map((it, i) => {
+          const isChecked = !!checkedMap[it.item];
+          return (
+            <button
+              key={it.item}
+              onClick={() => onToggle(it.item)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                padding: '11px 14px', background: 'transparent', border: 'none',
+                borderBottom: i === items.length - 1 ? 'none' : `1px solid ${t.BORDER}`,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              <span style={{
+                flexShrink: 0, width: 18, height: 18, borderRadius: 5,
+                border: `2px solid ${isChecked ? t.HERB : t.TEXT_FAINT}`,
+                background: isChecked ? t.HERB : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#FFF',
+              }}>
+                {isChecked ? '✓' : ''}
+              </span>
+              <span style={{
+                fontSize: 13.5, color: isChecked ? t.TEXT_FAINT : t.TEXT,
+                textDecoration: isChecked ? 'line-through' : 'none',
+              }}>
+                {it.display}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PortionMultiplier({ value, onChange }) {
+  const t = useTheme();
+  const options = [
+    { key: 1, label: '×1' },
+    { key: 1.5, label: '×1.5' },
+    { key: 2, label: '×2' },
+  ];
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 11.5, color: t.TEXT_FAINT, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 8 }}>
+        Порций
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {options.map((opt) => {
+          const active = value === opt.key;
+          return (
+            <button
+              key={opt.key}
+              onClick={() => onChange(opt.key)}
+              style={{
+                flex: 1, padding: '9px 0', borderRadius: 9,
+                border: `1px solid ${active ? t.ACCENT : t.BORDER}`,
+                background: active ? 'rgba(168,51,76,0.16)' : 'transparent',
+                color: active ? t.ACCENT_SOFT : t.TEXT_DIM,
+                fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -647,43 +684,65 @@ function ShoppingTab() {
   const t = useTheme();
   const [activeWeekId, setActiveWeekId] = useState(getLatestWeek()?.id);
   const week = WEEKS.find((w) => w.id === activeWeekId) || getLatestWeek();
+  const [checkedMap, setCheckedMap] = useState({});
+  const [multiplier, setMultiplier] = useState(1);
 
-  if (!week || !week.shoppingList) {
-    return <div style={{ color: t.TEXT_FAINT, fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Пока нет списка покупок.</div>;
+  const shoppingList = useMemo(() => buildShoppingList(week, CATEGORIES, multiplier), [week, multiplier]);
+
+  const toggleItem = (itemKey) => setCheckedMap((c) => ({ ...c, [itemKey]: !c[itemKey] }));
+
+  if (!week) {
+    return <div style={{ color: t.TEXT_FAINT, fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Пока нет плана на эту неделю.</div>;
   }
 
-  const { pantry, fresh, overallFootnote } = week.shoppingList;
+  const totalLong = shoppingList.long.reduce((s, g) => s + g.items.length, 0);
+  const totalFresh = shoppingList.fresh.reduce((s, g) => s + g.items.length, 0);
 
   return (
     <div>
       <WeekSwitcher weeks={WEEKS} activeId={week.id} onChange={setActiveWeekId} />
 
-      <SectionLabel>{pantry.title}</SectionLabel>
-      <p style={{ fontSize: 12, color: t.TEXT_FAINT, marginTop: -4, marginBottom: 14 }}>{pantry.subtitle}</p>
-      {pantry.groups.map((g) => (
-        <ShoppingGroup key={g.title} title={g.title} items={g.items} />
-      ))}
-      {pantry.footnote && (
-        <p style={{ fontSize: 12, color: t.TEXT_FAINT, fontStyle: 'italic', lineHeight: 1.5, marginBottom: 22 }}>
-          {pantry.footnote}
-        </p>
-      )}
+      <p style={{ fontSize: 12, color: t.TEXT_FAINT, lineHeight: 1.5, marginBottom: 16 }}>
+        Список считается автоматически из всех блюд недели — поменяешь день в плане, список обновится сам.
+      </p>
 
-      <div style={{ height: 1, background: t.BORDER, margin: '4px 0 22px' }} />
+      <PortionMultiplier value={multiplier} onChange={setMultiplier} />
 
-      <SectionLabel>{fresh.title}</SectionLabel>
-      <p style={{ fontSize: 12, color: t.TEXT_FAINT, marginTop: -4, marginBottom: 14 }}>{fresh.subtitle}</p>
-      {fresh.batches.map((b) => (
-        <ShoppingGroup key={b.title} title={b.title} items={b.items} />
-      ))}
-      {fresh.footnote && (
-        <p style={{ fontSize: 12, color: t.TEXT_FAINT, fontStyle: 'italic', lineHeight: 1.5, marginBottom: 14 }}>
-          {fresh.footnote}
-        </p>
-      )}
+      {totalLong === 0 && totalFresh === 0 ? (
+        <div style={{ color: t.TEXT_FAINT, fontSize: 14, textAlign: 'center', padding: '30px 0' }}>
+          На эту неделю пока нет выбранных блюд.
+        </div>
+      ) : (
+        <>
+          {totalLong > 0 && (
+            <>
+              <SectionLabel>Купить сразу на всю неделю</SectionLabel>
+              <p style={{ fontSize: 12, color: t.TEXT_FAINT, marginTop: -4, marginBottom: 14 }}>
+                Хранится долго — холодильник/морозилка/полка
+              </p>
+              {shoppingList.long.map((g) => (
+                <ShoppingGroup key={g.key} title={g.title} items={g.items} checkedMap={checkedMap} onToggle={toggleItem} />
+              ))}
+            </>
+          )}
 
-      {overallFootnote && (
-        <p style={{ fontSize: 12, color: t.TEXT_FAINT, textAlign: 'center', marginTop: 8 }}>{overallFootnote}</p>
+          {totalFresh > 0 && (
+            <>
+              <div style={{ height: 1, background: t.BORDER, margin: '4px 0 22px' }} />
+              <SectionLabel>Докупать свежим в течение недели</SectionLabel>
+              <p style={{ fontSize: 12, color: t.TEXT_FAINT, marginTop: -4, marginBottom: 14 }}>
+                Срок хранения 2–4 дня — лучше брать ближе к делу, а не сразу на неделю
+              </p>
+              {shoppingList.fresh.map((g) => (
+                <ShoppingGroup key={g.key} title={g.title} items={g.items} checkedMap={checkedMap} onToggle={toggleItem} />
+              ))}
+            </>
+          )}
+
+          <p style={{ fontSize: 12, color: t.TEXT_FAINT, textAlign: 'center', marginTop: 8 }}>
+            Количества — точные суммы по рецептам{multiplier !== 1 ? ` (×${multiplier})` : ''}, подгоняй на глаз под упаковки в магазине.
+          </p>
+        </>
       )}
     </div>
   );

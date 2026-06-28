@@ -1,6 +1,18 @@
 // Данные рецептов. Чтобы добавить новый рецепт — допиши объект в массив RECIPES.
 // id должен быть уникальным и стабильным (на него ссылается план недели).
 // mealType: 'breakfast' | 'lunch' | 'pretrain' | 'dinner'
+//
+// Каждый ингредиент:
+//   item        — нормализованный ключ продукта (одинаковый для одного и того же продукта
+//                 во всех рецептах — на нём строится сложение в списке покупок)
+//   label       — как называть продукт в списке покупок
+//   qty, unit   — количество для расчёта (суммируется между рецептами одной недели)
+//   display     — как показать количество в самом рецепте (с ≈граммами, если нужно)
+//   category    — 'protein' | 'grains' | 'dairy' | 'produce' | 'pantry' | 'supplement'
+//   shelfLife   — 'long' (закупаем на всю неделю) | 'fresh' (докупаем по ходу недели) | 'skip' (вода и т.п. — не идёт в список)
+//
+// Если qty равен null (например "по вкусу", "щепотка") — позиция в списке покупок
+// показывается как факт использования без суммирования числа.
 
 export const MEAL_TYPES = {
   breakfast: { label: 'Завтрак', icon: '🌅', order: 0 },
@@ -8,6 +20,19 @@ export const MEAL_TYPES = {
   pretrain: { label: 'Предтрен', icon: '⚡', order: 2 },
   dinner: { label: 'Ужин', icon: '🌙', order: 3 },
 };
+
+export const CATEGORIES = {
+  protein: { label: 'Белок', order: 0 },
+  grains: { label: 'Крупы и бобовые', order: 1 },
+  dairy: { label: 'Молочное', order: 2 },
+  produce: { label: 'Овощи, фрукты, зелень', order: 3 },
+  pantry: { label: 'Бакалея и приправы', order: 4 },
+  supplement: { label: 'Спортпит', order: 5 },
+};
+
+const ing = (item, label, qty, unit, display, category, shelfLife) => ({
+  item, label, qty, unit, display, category, shelfLife,
+});
 
 export const RECIPES = [
   {
@@ -17,10 +42,10 @@ export const RECIPES = [
     kcal: 420, protein: 20, fat: 12, carbs: 60,
     activeTime: 7, totalTime: 12,
     ingredients: [
-      { name: 'Овсянка (геркулес)', amount: '80 г' },
-      { name: 'Молоко 2.5%', amount: '250 мл' },
-      { name: 'Банан', amount: '1 шт (≈120 г)' },
-      { name: 'Арахисовая паста', amount: '0.5 ст. л. (≈8 г)' },
+      ing('oats', 'Овсянка (геркулес)', 80, 'г', '80 г', 'grains', 'long'),
+      ing('milk', 'Молоко 2.5%', 250, 'мл', '250 мл', 'dairy', 'fresh'),
+      ing('banana', 'Бананы', 1, 'шт', '1 шт (≈120 г)', 'produce', 'fresh'),
+      ing('peanut_butter', 'Арахисовая паста', 0.5, 'ст. л.', '0.5 ст. л. (≈8 г)', 'pantry', 'long'),
     ],
     steps: [
       'Влить молоко (250 мл) в кастрюлю, добавить овсянку (80 г), поставить на средний огонь.',
@@ -39,11 +64,11 @@ export const RECIPES = [
     kcal: 400, protein: 26, fat: 26, carbs: 18,
     activeTime: 7, totalTime: 7,
     ingredients: [
-      { name: 'Яйца', amount: '4 шт (≈200 г)' },
-      { name: 'Авокадо', amount: '0.5 шт (≈70 г мякоти)' },
-      { name: 'Хлеб цельнозерновой', amount: '1 ломтик (≈30 г)' },
-      { name: 'Оливковое масло', amount: '1 ч. л. (≈5 г)' },
-      { name: 'Соль, перец', amount: 'по вкусу (≈1 г)' },
+      ing('eggs', 'Яйца', 4, 'шт', '4 шт (≈200 г)', 'protein', 'long'),
+      ing('avocado', 'Авокадо', 0.5, 'шт', '0.5 шт (≈70 г мякоти)', 'produce', 'fresh'),
+      ing('bread_wholegrain', 'Хлеб цельнозерновой', 1, 'ломтик', '1 ломтик (≈30 г)', 'produce', 'fresh'),
+      ing('olive_oil', 'Оливковое масло', 1, 'ч. л.', '1 ч. л. (≈5 г)', 'pantry', 'long'),
+      ing('salt_pepper', 'Соль, перец', null, 'по вкусу', 'по вкусу (≈1 г)', 'pantry', 'long'),
     ],
     steps: [
       'Разогреть сковороду с оливковым маслом (1 ч. л.) на среднем огне.',
@@ -63,10 +88,10 @@ export const RECIPES = [
     kcal: 430, protein: 35, fat: 10, carbs: 50,
     activeTime: 5, totalTime: 25,
     ingredients: [
-      { name: 'Творог 5%', amount: '200 г' },
-      { name: 'Гречка (сухая)', amount: '75 г (≈150 г готовой)' },
-      { name: 'Ягоды (черника/клубника)', amount: '50 г' },
-      { name: 'Мёд', amount: '1 ч. л. (≈7 г)' },
+      ing('cottage_cheese', 'Творог 5%', 200, 'г', '200 г', 'dairy', 'fresh'),
+      ing('buckwheat', 'Гречка', 75, 'г', '75 г (≈150 г готовой)', 'grains', 'long'),
+      ing('berries', 'Ягоды (черника/клубника)', 50, 'г', '50 г', 'produce', 'fresh'),
+      ing('honey', 'Мёд', 1, 'ч. л.', '1 ч. л. (≈7 г)', 'pantry', 'long'),
     ],
     steps: [
       'Гречку (75 г) промыть, залить водой в пропорции 1:2 (≈150 мл воды).',
@@ -84,10 +109,10 @@ export const RECIPES = [
     kcal: 380, protein: 18, fat: 8, carbs: 55,
     activeTime: 10, totalTime: 10,
     ingredients: [
-      { name: 'Банан', amount: '1 шт (≈120 г)' },
-      { name: 'Яйца', amount: '2 шт (≈100 г)' },
-      { name: 'Овсяная мука (или овсянка, измельчённая в блендере)', amount: '50 г' },
-      { name: 'Разрыхлитель', amount: '0.5 ч. л. (≈2 г)' },
+      ing('banana', 'Бананы', 1, 'шт', '1 шт (≈120 г)', 'produce', 'fresh'),
+      ing('eggs', 'Яйца', 2, 'шт', '2 шт (≈100 г)', 'protein', 'long'),
+      ing('oat_flour', 'Овсяная мука', 50, 'г', '50 г', 'pantry', 'long'),
+      ing('baking_powder', 'Разрыхлитель', 0.5, 'ч. л.', '0.5 ч. л. (≈2 г)', 'pantry', 'long'),
     ],
     steps: [
       'Банан (1 шт) размять вилкой или измельчить блендером.',
@@ -105,10 +130,10 @@ export const RECIPES = [
     kcal: 350, protein: 28, fat: 14, carbs: 28,
     activeTime: 3, totalTime: 3,
     ingredients: [
-      { name: 'Греческий йогурт натуральный 2–5%', amount: '200 г' },
-      { name: 'Грецкие орехи или миндаль', amount: '15 г' },
-      { name: 'Ягоды', amount: '50 г' },
-      { name: 'Корица', amount: 'щепотка (≈1 г)' },
+      ing('greek_yogurt', 'Греческий йогурт', 200, 'г', '200 г', 'dairy', 'fresh'),
+      ing('walnuts_almonds', 'Грецкие орехи или миндаль', 15, 'г', '15 г', 'pantry', 'long'),
+      ing('berries', 'Ягоды (черника/клубника)', 50, 'г', '50 г', 'produce', 'fresh'),
+      ing('cinnamon', 'Корица', null, 'щепотка', 'щепотка (≈1 г)', 'pantry', 'long'),
     ],
     steps: [
       'Выложить йогурт (200 г) в миску.',
@@ -125,14 +150,14 @@ export const RECIPES = [
     kcal: 480, protein: 40, fat: 18, carbs: 35,
     activeTime: 15, totalTime: 40,
     ingredients: [
-      { name: 'Куриное филе/бёдра без кожи', amount: '200 г' },
-      { name: 'Помидоры', amount: '2 шт (≈300 г)' },
-      { name: 'Лук', amount: '1 шт (≈100 г)' },
-      { name: 'Болгарский перец', amount: '1 шт (≈120 г)' },
-      { name: 'Чеснок', amount: '2 зубчика (≈6 г)' },
-      { name: 'Кинза', amount: 'пучок (≈10 г)' },
-      { name: 'Хмели-сунели', amount: '1 ч. л. (≈3 г)' },
-      { name: 'Оливковое масло', amount: '1 ст. л. (≈15 г)' },
+      ing('chicken_breast', 'Куриная грудка/филе', 200, 'г', '200 г', 'protein', 'long'),
+      ing('tomato', 'Помидоры', 2, 'шт', '2 шт (≈300 г)', 'produce', 'fresh'),
+      ing('onion', 'Лук', 1, 'шт', '1 шт (≈100 г)', 'produce', 'long'),
+      ing('bell_pepper', 'Болгарский перец', 1, 'шт', '1 шт (≈120 г)', 'produce', 'fresh'),
+      ing('garlic', 'Чеснок', 2, 'зубчик', '2 зубчика (≈6 г)', 'produce', 'long'),
+      ing('cilantro', 'Кинза', 1, 'пучок', 'пучок (≈10 г)', 'produce', 'fresh'),
+      ing('hmeli_suneli', 'Хмели-сунели', 1, 'ч. л.', '1 ч. л. (≈3 г)', 'pantry', 'long'),
+      ing('olive_oil', 'Оливковое масло', 1, 'ст. л.', '1 ст. л. (≈15 г)', 'pantry', 'long'),
     ],
     steps: [
       'Лук (1 шт) нарезать полукольцами, обжарить на оливковом масле (1 ст. л.) 3–5 минут.',
@@ -151,14 +176,14 @@ export const RECIPES = [
     kcal: 450, protein: 20, fat: 12, carbs: 60,
     activeTime: 10, totalTime: 20,
     ingredients: [
-      { name: 'Красная фасоль (готовая, отварная)', amount: '250 г' },
-      { name: 'Лук', amount: '1 шт (≈100 г)' },
-      { name: 'Грецкие орехи', amount: '20 г' },
-      { name: 'Кинза', amount: 'пучок (≈10 г)' },
-      { name: 'Чеснок', amount: '2 зубчика (≈6 г)' },
-      { name: 'Уцхо-сунели или хмели-сунели', amount: '1 ч. л. (≈3 г)' },
-      { name: 'Растительное масло', amount: '1 ст. л. (≈15 г)' },
-      { name: 'Лаваш', amount: '1 небольшой (≈60 г)' },
+      ing('red_beans', 'Красная фасоль (готовая/отварная)', 250, 'г', '250 г', 'grains', 'long'),
+      ing('onion', 'Лук', 1, 'шт', '1 шт (≈100 г)', 'produce', 'long'),
+      ing('walnuts', 'Грецкие орехи', 20, 'г', '20 г', 'pantry', 'long'),
+      ing('cilantro', 'Кинза', 1, 'пучок', 'пучок (≈10 г)', 'produce', 'fresh'),
+      ing('garlic', 'Чеснок', 2, 'зубчик', '2 зубчика (≈6 г)', 'produce', 'long'),
+      ing('utskho_or_hmeli', 'Уцхо-сунели/хмели-сунели', 1, 'ч. л.', '1 ч. л. (≈3 г)', 'pantry', 'long'),
+      ing('vegetable_oil', 'Растительное/оливковое масло', 1, 'ст. л.', '1 ст. л. (≈15 г)', 'pantry', 'long'),
+      ing('lavash', 'Лаваш', 1, 'шт', '1 небольшой (≈60 г)', 'produce', 'fresh'),
     ],
     steps: [
       'Лук (1 шт) нарезать мелко, обжарить на масле (1 ст. л.) 3–4 минуты.',
@@ -177,12 +202,12 @@ export const RECIPES = [
     kcal: 520, protein: 38, fat: 28, carbs: 20,
     activeTime: 15, totalTime: 15,
     ingredients: [
-      { name: 'Говядина (вырезка)', amount: '180 г' },
-      { name: 'Гранатовые зёрна', amount: '30 г' },
-      { name: 'Грецкие орехи', amount: '15 г' },
-      { name: 'Лук', amount: '1 шт (≈100 г)' },
-      { name: 'Чеснок', amount: '1 зубчик (≈3 г)' },
-      { name: 'Уцхо-сунели', amount: '1 ч. л. (≈3 г)' },
+      ing('beef', 'Говядина (вырезка)', 180, 'г', '180 г', 'protein', 'long'),
+      ing('pomegranate', 'Гранат', 30, 'г', '30 г', 'produce', 'fresh'),
+      ing('walnuts', 'Грецкие орехи', 15, 'г', '15 г', 'pantry', 'long'),
+      ing('onion', 'Лук', 1, 'шт', '1 шт (≈100 г)', 'produce', 'long'),
+      ing('garlic', 'Чеснок', 1, 'зубчик', '1 зубчик (≈3 г)', 'produce', 'long'),
+      ing('utskho_suneli', 'Уцхо-сунели', 1, 'ч. л.', '1 ч. л. (≈3 г)', 'pantry', 'long'),
     ],
     steps: [
       'Мясо (180 г) нарезать тонкими полосками.',
@@ -200,13 +225,13 @@ export const RECIPES = [
     kcal: 500, protein: 45, fat: 8, carbs: 60,
     activeTime: 20, totalTime: 30,
     ingredients: [
-      { name: 'Куриная грудка', amount: '150 г' },
-      { name: 'Гречка (сухая)', amount: '75 г (≈150 г готовой)' },
-      { name: 'Баклажан', amount: '50 г' },
-      { name: 'Болгарский перец (для гриля)', amount: '50 г' },
-      { name: 'Чеснок', amount: '2 зубчика (≈6 г)' },
-      { name: 'Специи (хмели-сунели, паприка)', amount: '1 ч. л. (≈3 г)' },
-      { name: 'Растительное масло', amount: '1 ч. л. (≈5 г)' },
+      ing('chicken_breast', 'Куриная грудка/филе', 150, 'г', '150 г', 'protein', 'long'),
+      ing('buckwheat', 'Гречка', 75, 'г', '75 г (≈150 г готовой)', 'grains', 'long'),
+      ing('eggplant', 'Баклажан', 50, 'г', '50 г', 'produce', 'fresh'),
+      ing('bell_pepper', 'Болгарский перец', 50, 'г', '50 г (для гриля)', 'produce', 'fresh'),
+      ing('garlic', 'Чеснок', 2, 'зубчик', '2 зубчика (≈6 г)', 'produce', 'long'),
+      ing('spices_hmeli_paprika', 'Хмели-сунели, паприка', 1, 'ч. л.', '1 ч. л. (≈3 г)', 'pantry', 'long'),
+      ing('vegetable_oil', 'Растительное/оливковое масло', 1, 'ч. л.', '1 ч. л. (≈5 г)', 'pantry', 'long'),
     ],
     steps: [
       'Грудку (150 г) замариновать в чесноке (2 зубчика), специях (1 ч. л.) и масле (1 ч. л.) на 10–15 минут (можно дольше).',
@@ -225,15 +250,14 @@ export const RECIPES = [
     kcal: 550, protein: 32, fat: 20, carbs: 55,
     activeTime: 50, totalTime: 85,
     ingredients: [
-      { name: 'Говяжий фарш', amount: '200 г' },
-      { name: 'Лук', amount: '1 шт (≈100 г)' },
-      { name: 'Мука (для теста)', amount: '250 г' },
-      { name: 'Вода (в тесто)', amount: '120 мл' },
-      { name: 'Вода (в фарш для сочности)', amount: '30 мл' },
-      { name: 'Соль', amount: '0.5 ч. л. (≈3 г)' },
-      { name: 'Зира', amount: '0.5 ч. л. (≈2 г)' },
-      { name: 'Чёрный перец', amount: '0.3 ч. л. (≈1 г)' },
-      { name: 'Кинза', amount: 'пучок (≈10 г)' },
+      ing('beef_mince', 'Говяжий фарш', 200, 'г', '200 г', 'protein', 'long'),
+      ing('onion', 'Лук', 1, 'шт', '1 шт (≈100 г)', 'produce', 'long'),
+      ing('flour', 'Мука пшеничная', 250, 'г', '250 г', 'pantry', 'long'),
+      ing('water', 'Вода (тесто + фарш)', null, 'мл', '150 мл', 'pantry', 'skip'),
+      ing('salt', 'Соль', 0.5, 'ч. л.', '0.5 ч. л. (≈3 г)', 'pantry', 'long'),
+      ing('cumin', 'Зира', 0.5, 'ч. л.', '0.5 ч. л. (≈2 г)', 'pantry', 'long'),
+      ing('black_pepper', 'Чёрный перец', 0.3, 'ч. л.', '0.3 ч. л. (≈1 г)', 'pantry', 'long'),
+      ing('cilantro', 'Кинза', 1, 'пучок', 'пучок (≈10 г)', 'produce', 'fresh'),
     ],
     steps: [
       'Замесить тесто из муки (250 г), воды (120 мл) и соли (0.25 ч. л.), дать отдохнуть 20–30 минут под пленкой.',
@@ -254,9 +278,9 @@ export const RECIPES = [
     kcal: 280, protein: 6, fat: 3, carbs: 58,
     activeTime: 3, totalTime: 3,
     ingredients: [
-      { name: 'Хлеб (белый/цельнозерновой)', amount: '2 ломтика (≈60 г)' },
-      { name: 'Банан', amount: '1 шт (≈120 г)' },
-      { name: 'Мёд', amount: '1 ч. л. (≈7 г)' },
+      ing('bread', 'Хлеб белый/цельнозерновой', 2, 'ломтик', '2 ломтика (≈60 г)', 'produce', 'fresh'),
+      ing('banana', 'Бананы', 1, 'шт', '1 шт (≈120 г)', 'produce', 'fresh'),
+      ing('honey', 'Мёд', 1, 'ч. л.', '1 ч. л. (≈7 г)', 'pantry', 'long'),
     ],
     steps: [
       'Подсушить хлеб (2 ломтика) в тостере 1–2 минуты.',
@@ -273,9 +297,9 @@ export const RECIPES = [
     kcal: 350, protein: 25, fat: 5, carbs: 50,
     activeTime: 5, totalTime: 5,
     ingredients: [
-      { name: 'Отварной рис', amount: '100 г' },
-      { name: 'Куриная грудка (отварная/готовая)', amount: '80 г' },
-      { name: 'Соевый соус', amount: '1 ч. л. (≈6 г)' },
+      ing('rice', 'Рис', 100, 'г', '100 г', 'grains', 'long'),
+      ing('chicken_breast', 'Куриная грудка/филе', 80, 'г', '80 г', 'protein', 'long'),
+      ing('soy_sauce', 'Соевый соус', 1, 'ч. л.', '1 ч. л. (≈6 г)', 'pantry', 'long'),
     ],
     steps: [
       'Разогреть рис (100 г) и курицу (80 г) в микроволновке или на сковороде без масла 2–3 минуты.',
@@ -291,9 +315,9 @@ export const RECIPES = [
     kcal: 250, protein: 28, fat: 3, carbs: 30,
     activeTime: 2, totalTime: 2,
     ingredients: [
-      { name: 'Протеин (сывороточный, BioPharm Iso Whey)', amount: '1 порция (30 г)' },
-      { name: 'Банан', amount: '1 шт (≈120 г)' },
-      { name: 'Вода или молоко', amount: '250 мл' },
+      ing('whey_protein', 'Протеин сывороточный (BioPharm Iso Whey)', 30, 'г', '1 порция (30 г)', 'supplement', 'long'),
+      ing('banana', 'Бананы', 1, 'шт', '1 шт (≈120 г)', 'produce', 'fresh'),
+      ing('water_or_milk', 'Вода или молоко (для шейка)', null, 'мл', '250 мл', 'skip', 'skip'),
     ],
     steps: [
       'Все ингредиенты (протеин 30 г, банан 1 шт, вода/молоко 250 мл) положить в шейкер или блендер.',
@@ -309,11 +333,11 @@ export const RECIPES = [
     kcal: 420, protein: 38, fat: 10, carbs: 40,
     activeTime: 10, totalTime: 25,
     ingredients: [
-      { name: 'Куриная грудка', amount: '150 г' },
-      { name: 'Красная фасоль (готовая)', amount: '150 г' },
-      { name: 'Лук', amount: '0.5 шт (≈50 г)' },
-      { name: 'Чеснок', amount: '1 зубчик (≈3 г)' },
-      { name: 'Кинза', amount: 'пучок (≈10 г)' },
+      ing('chicken_breast', 'Куриная грудка/филе', 150, 'г', '150 г', 'protein', 'long'),
+      ing('red_beans', 'Красная фасоль (готовая/отварная)', 150, 'г', '150 г', 'grains', 'long'),
+      ing('onion', 'Лук', 0.5, 'шт', '0.5 шт (≈50 г)', 'produce', 'long'),
+      ing('garlic', 'Чеснок', 1, 'зубчик', '1 зубчик (≈3 г)', 'produce', 'long'),
+      ing('cilantro', 'Кинза', 1, 'пучок', 'пучок (≈10 г)', 'produce', 'fresh'),
     ],
     steps: [
       'Грудку (150 г) отварить или обжарить на сухой сковороде 10–15 минут до готовности.',
@@ -331,11 +355,11 @@ export const RECIPES = [
     kcal: 480, protein: 35, fat: 18, carbs: 40,
     activeTime: 20, totalTime: 25,
     ingredients: [
-      { name: 'Говядина или нежирная свинина', amount: '180 г' },
-      { name: 'Картофель', amount: '150 г' },
-      { name: 'Лук', amount: '0.5 шт (≈50 г)' },
-      { name: 'Чеснок', amount: '1 зубчик (≈3 г)' },
-      { name: 'Специи (хмели-сунели, перец)', amount: '1 ч. л. (≈3 г)' },
+      ing('beef_or_pork', 'Говядина/свинина нежирная', 180, 'г', '180 г', 'protein', 'long'),
+      ing('potato', 'Картофель', 150, 'г', '150 г', 'produce', 'long'),
+      ing('onion', 'Лук', 0.5, 'шт', '0.5 шт (≈50 г)', 'produce', 'long'),
+      ing('garlic', 'Чеснок', 1, 'зубчик', '1 зубчик (≈3 г)', 'produce', 'long'),
+      ing('spices_hmeli_pepper', 'Хмели-сунели, чёрный перец', 1, 'ч. л.', '1 ч. л. (≈3 г)', 'pantry', 'long'),
     ],
     steps: [
       'Мясо (180 г) нарезать кусочками, обжарить на среднем огне 10 минут.',
@@ -352,11 +376,11 @@ export const RECIPES = [
     kcal: 280, protein: 30, fat: 8, carbs: 15,
     activeTime: 5, totalTime: 5,
     ingredients: [
-      { name: 'Творог 5%', amount: '200 г' },
-      { name: 'Огурец', amount: '1 шт (≈100 г)' },
-      { name: 'Помидор', amount: '1 шт (≈100 г)' },
-      { name: 'Зелень (укроп/петрушка)', amount: 'пучок (≈10 г)' },
-      { name: 'Чеснок', amount: '1 зубчик (≈3 г)' },
+      ing('cottage_cheese', 'Творог 5%', 200, 'г', '200 г', 'dairy', 'fresh'),
+      ing('cucumber', 'Огурец', 1, 'шт', '1 шт (≈100 г)', 'produce', 'fresh'),
+      ing('tomato', 'Помидоры', 1, 'шт', '1 шт (≈100 г)', 'produce', 'fresh'),
+      ing('herbs_dill_parsley', 'Зелень (укроп/петрушка)', 1, 'пучок', 'пучок (≈10 г)', 'produce', 'fresh'),
+      ing('garlic', 'Чеснок', 1, 'зубчик', '1 зубчик (≈3 г)', 'produce', 'long'),
     ],
     steps: [
       'Огурец (1 шт) и помидор (1 шт) нарезать кубиками.',
