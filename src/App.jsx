@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useMemo, useContext, createContext } from 'react';
 import {
   BookOpen, CalendarDays, ShoppingCart, ChevronDown, ChevronLeft, ChevronRight,
-  Clock, Sun, Moon, X, ExternalLink, Pencil, RotateCcw,
+  Clock, Sun, Moon, X, ExternalLink, Pencil, RotateCcw, User, Plus, Trash2,
 } from 'lucide-react';
 import { RECIPES, RECIPES_BY_ID, MEAL_TYPES, CATEGORIES } from './data/recipes.js';
 import { WEEKS, getLatestWeek } from './data/weeks.js';
 import { buildShoppingList } from './lib/shoppingList.js';
 import { useMealOverrides } from './lib/useMealOverrides.js';
+import { useProfile } from './lib/useProfile.js';
+import { useSupplements } from './lib/useSupplements.js';
+import { calcTargetMacros, ACTIVITY_LEVELS, GOALS } from './lib/macroCalculator.js';
 
 // ---------- Тема ----------
 const THEMES = {
@@ -237,6 +240,7 @@ function RecipeDetail({ recipe, onClose }) {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      className="recipe-detail-enter"
       style={{
         position: 'fixed', inset: 0, zIndex: 50, background: t.BG,
         overflowY: 'auto', WebkitOverflowScrolling: 'touch',
@@ -420,7 +424,7 @@ function WeekSwitcher({ weeks, activeId, onChange }) {
   );
 }
 
-function DayMealRow({ mealType, recipeId, customLabel, note, onOpenRecipe, isOverridden, onEdit }) {
+function DayMealRow({ mealType, recipeId, customLabel, note, onOpenRecipe, isOverridden, isNewDish, onEdit }) {
   const t = useTheme();
   const meta = MEAL_TYPES[mealType];
   const recipe = recipeId ? RECIPES_BY_ID[recipeId] : null;
@@ -451,6 +455,11 @@ function DayMealRow({ mealType, recipeId, customLabel, note, onOpenRecipe, isOve
             {isOverridden && (
               <span style={{ color: t.ACCENT_SOFT, fontSize: 10, fontWeight: 700, background: 'rgba(168,51,76,0.14)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>
                 заменено
+              </span>
+            )}
+            {isNewDish && (
+              <span style={{ color: t.GOLD, fontSize: 10, fontWeight: 700, background: 'rgba(204,159,61,0.14)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>
+                ✨ новое блюдо недели
               </span>
             )}
           </div>
@@ -492,11 +501,12 @@ function DayCard({ day, dayIndex, onOpenRecipe, defaultOpen, getOverride, hasOve
   const resolveMeal = (mealType, defaultRecipeId, extra = {}) => {
     const overridden = hasOverride(dayIndex, mealType);
     const recipeId = overridden ? getOverride(dayIndex, mealType) : defaultRecipeId;
-    return { mealType, recipeId, isOverridden: overridden, ...extra };
+    const isNewDish = day[`${mealType}Note`] === 'Новое блюдо недели';
+    return { mealType, recipeId, isOverridden: overridden, isNewDish, ...extra };
   };
 
   const meals = [
-    resolveMeal('breakfast', day.breakfast, { customLabel: day.breakfastCustom }),
+    resolveMeal('breakfast', day.breakfast, { customLabel: day.breakfastCustom, note: day.breakfastNote !== 'Новое блюдо недели' ? day.breakfastNote : null }),
     resolveMeal('lunch', day.lunch, { note: day.lunchNote }),
     resolveMeal('pretrain', day.pretrain),
     resolveMeal('dinner', day.dinner),
@@ -552,6 +562,157 @@ function DayCard({ day, dayIndex, onOpenRecipe, defaultOpen, getOverride, hasOve
   );
 }
 
+function SupplementRow({ supplement, onUpdate, onRemove }) {
+  const t = useTheme();
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState(supplement);
+
+  useEffect(() => { setLocal(supplement); }, [supplement]);
+
+  const commit = () => {
+    onUpdate(supplement.id, {
+      name: local.name,
+      amount: local.amount,
+      unit: local.unit,
+      timing: local.timing,
+    });
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div style={{
+        background: t.BG_RAISED, border: `1px solid ${t.ACCENT}`, borderRadius: 10, padding: 12,
+      }}>
+        <input
+          value={local.name}
+          onChange={(e) => setLocal((l) => ({ ...l, name: e.target.value }))}
+          placeholder="Название"
+          style={{
+            width: '100%', border: `1px solid ${t.BORDER}`, background: t.BG_INPUT, color: t.TEXT,
+            borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', marginBottom: 8, boxSizing: 'border-box',
+          }}
+        />
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <input
+            type="number"
+            value={local.amount ?? ''}
+            onChange={(e) => setLocal((l) => ({ ...l, amount: e.target.value === '' ? null : parseFloat(e.target.value) }))}
+            placeholder="Порция"
+            style={{
+              flex: 1, border: `1px solid ${t.BORDER}`, background: t.BG_INPUT, color: t.TEXT,
+              borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box',
+            }}
+          />
+          <input
+            value={local.unit ?? ''}
+            onChange={(e) => setLocal((l) => ({ ...l, unit: e.target.value }))}
+            placeholder="Единица (г/мг/капсула)"
+            style={{
+              flex: 1.4, border: `1px solid ${t.BORDER}`, background: t.BG_INPUT, color: t.TEXT,
+              borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box',
+            }}
+          />
+        </div>
+        <input
+          value={local.timing ?? ''}
+          onChange={(e) => setLocal((l) => ({ ...l, timing: e.target.value }))}
+          placeholder="Когда принимать"
+          style={{
+            width: '100%', border: `1px solid ${t.BORDER}`, background: t.BG_INPUT, color: t.TEXT,
+            borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', marginBottom: 10, boxSizing: 'border-box',
+          }}
+        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={commit}
+            style={{
+              flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', background: t.ACCENT,
+              color: '#FFF', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Сохранить
+          </button>
+          <button
+            onClick={() => onRemove(supplement.id)}
+            style={{
+              width: 38, padding: '9px 0', borderRadius: 8, border: `1px solid ${t.BORDER}`,
+              background: t.BG_INPUT, color: t.ACCENT_SOFT, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', textAlign: 'left',
+        background: t.BG_RAISED, border: `1px solid ${t.BORDER}`, borderRadius: 10,
+        padding: '10px 14px', cursor: 'pointer', fontFamily: 'inherit',
+      }}
+    >
+      <span style={{ fontSize: 13.5, fontWeight: 700, color: t.TEXT }}>
+        {supplement.name}
+        {supplement.amount != null && (
+          <span style={{ color: t.TEXT_DIM, fontWeight: 600 }}> · {supplement.amount} {supplement.unit}</span>
+        )}
+      </span>
+      <span style={{ fontSize: 12.5, color: t.TEXT_DIM }}>{supplement.timing}</span>
+    </button>
+  );
+}
+
+function SupplementsSection() {
+  const t = useTheme();
+  const { supplements, error, addSupplement, updateSupplement, removeSupplement, isSupabaseConfigured } = useSupplements();
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = () => {
+    addSupplement({ name: 'Новый БАД', amount: null, unit: null, timing: '' });
+    setAdding(false);
+  };
+
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <SectionLabel>БАДы</SectionLabel>
+        <button
+          onClick={handleAdd}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8,
+            border: `1px solid ${t.BORDER}`, background: t.BG_INPUT, color: t.TEXT_DIM,
+            fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          <Plus size={13} /> Добавить
+        </button>
+      </div>
+      {!isSupabaseConfigured && (
+        <p style={{ fontSize: 11.5, color: t.TEXT_FAINT, marginTop: -4, marginBottom: 10 }}>
+          Изменения не сохранятся между визитами без подключённого Supabase.
+        </p>
+      )}
+      {error && <p style={{ fontSize: 12, color: t.ACCENT_SOFT, marginBottom: 10 }}>{error}</p>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {supplements.map((s) => (
+          <SupplementRow key={s.id} supplement={s} onUpdate={updateSupplement} onRemove={removeSupplement} />
+        ))}
+        {supplements.length === 0 && (
+          <p style={{ fontSize: 13, color: t.TEXT_FAINT, textAlign: 'center', padding: '12px 0' }}>
+            Список пуст — нажми «Добавить»
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RecipePicker({ mealType, currentRecipeId, hasOverride, onPick, onResetToDefault, onClose }) {
   const t = useTheme();
   const meta = MEAL_TYPES[mealType];
@@ -575,12 +736,13 @@ function RecipePicker({ mealType, currentRecipeId, hasOverride, onPick, onResetT
   }, [options, isSnack, mealType]);
 
   return (
-    <div style={{
+    <div className="overlay-fade-in" style={{
       position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.5)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
+        className="sheet-enter"
         style={{
           width: '100%', maxWidth: 480, maxHeight: '80vh', background: t.BG,
           borderRadius: '18px 18px 0 0', border: `1px solid ${t.BORDER}`, borderBottom: 'none',
@@ -695,10 +857,6 @@ function PlanTab({ onOpenRecipe }) {
     <div>
       <WeekSwitcher weeks={WEEKS} activeId={week.id} onChange={setActiveWeekId} />
 
-      <p style={{ fontSize: 12.5, color: t.TEXT_FAINT, lineHeight: 1.5, marginBottom: 14 }}>
-        {week.note}
-      </p>
-
       {!isSupabaseConfigured && (
         <div style={{
           background: 'rgba(204,159,61,0.1)', border: `1px solid ${t.GOLD}`, borderRadius: 10,
@@ -713,30 +871,6 @@ function PlanTab({ onOpenRecipe }) {
           padding: '10px 13px', marginBottom: 14, fontSize: 12.5, color: t.ACCENT_SOFT,
         }}>
           {error}
-        </div>
-      )}
-
-      {week.weekOfTheWeek && (
-        <div style={{
-          background: 'rgba(138,160,107,0.1)', border: `1px solid ${t.HERB}`, borderRadius: 12,
-          padding: 14, marginBottom: 14,
-        }}>
-          <div style={{ fontSize: 11, color: t.HERB, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 6 }}>
-            Новое блюдо недели
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: t.TEXT, marginBottom: 4 }}>{week.weekOfTheWeek.title}</div>
-          <div style={{ fontSize: 13, color: t.TEXT_DIM, lineHeight: 1.5 }}>{week.weekOfTheWeek.desc}</div>
-        </div>
-      )}
-
-      {week.logic && (
-        <div style={{
-          background: t.BG_RAISED, border: `1px solid ${t.BORDER}`, borderRadius: 12, padding: 14, marginBottom: 22,
-        }}>
-          <div style={{ fontSize: 11, color: t.TEXT_FAINT, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 6 }}>
-            Логика недели
-          </div>
-          <div style={{ fontSize: 13, color: t.TEXT_DIM, lineHeight: 1.5 }}>{week.logic}</div>
         </div>
       )}
 
@@ -759,23 +893,7 @@ function PlanTab({ onOpenRecipe }) {
         ))}
       </div>
 
-      {week.supplements && (
-        <>
-          <SectionLabel>БАДы</SectionLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {week.supplements.map((s) => (
-              <div key={s.name} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                background: t.BG_RAISED, border: `1px solid ${t.BORDER}`, borderRadius: 10,
-                padding: '10px 14px',
-              }}>
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: t.TEXT }}>{s.name}</span>
-                <span style={{ fontSize: 12.5, color: t.TEXT_DIM }}>{s.timing}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      <SupplementsSection />
 
       {editingMeal && (
         <RecipePicker
@@ -798,6 +916,19 @@ function RecipesTab({ onOpenRecipe }) {
   const filtered = useMemo(() => {
     if (filter === 'all') return RECIPES;
     return RECIPES.filter((r) => r.mealType === filter);
+  }, [filter]);
+
+  // В режиме "Все" группируем по типу блюда с заголовками-разделителями —
+  // иначе все 17 рецептов сливаются в один безликий список
+  const groupedSections = useMemo(() => {
+    if (filter !== 'all') return null;
+    return Object.entries(MEAL_TYPES)
+      .sort((a, b) => a[1].order - b[1].order)
+      .map(([key, meta]) => ({
+        key, meta,
+        items: RECIPES.filter((r) => r.mealType === key),
+      }))
+      .filter((section) => section.items.length > 0);
   }, [filter]);
 
   const filterOptions = [
@@ -835,11 +966,34 @@ function RecipesTab({ onOpenRecipe }) {
         })}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {filtered.map((r) => (
-          <RecipeCard key={r.id} recipe={r} onOpen={onOpenRecipe} />
-        ))}
-      </div>
+      {groupedSections ? (
+        groupedSections.map((section, idx) => (
+          <div key={section.key} style={{ marginBottom: idx === groupedSections.length - 1 ? 0 : 26 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+            }}>
+              <span style={{ fontSize: 16 }}>{section.meta.icon}</span>
+              <span style={{
+                fontSize: 13, fontWeight: 800, color: t.TEXT, textTransform: 'uppercase', letterSpacing: '0.03em',
+              }}>
+                {section.meta.label}
+              </span>
+              <div style={{ flex: 1, height: 1, background: t.BORDER }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {section.items.map((r) => (
+                <RecipeCard key={r.id} recipe={r} onOpen={onOpenRecipe} />
+              ))}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {filtered.map((r) => (
+            <RecipeCard key={r.id} recipe={r} onOpen={onOpenRecipe} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -969,7 +1123,9 @@ function ShoppingTab() {
   }
 
   const totalLong = shoppingList.long.reduce((s, g) => s + g.items.length, 0);
-  const totalFresh = shoppingList.fresh.reduce((s, g) => s + g.items.length, 0);
+  const totalFresh = shoppingList.freshBatches.reduce(
+    (s, b) => s + b.groups.reduce((s2, g) => s2 + g.items.length, 0), 0
+  );
 
   return (
     <div>
@@ -999,18 +1155,22 @@ function ShoppingTab() {
             </>
           )}
 
-          {totalFresh > 0 && (
-            <>
-              <div style={{ height: 1, background: t.BORDER, margin: '4px 0 22px' }} />
-              <SectionLabel>Докупать свежим в течение недели</SectionLabel>
-              <p style={{ fontSize: 12, color: t.TEXT_FAINT, marginTop: -4, marginBottom: 14 }}>
-                Срок хранения 2–4 дня — лучше брать ближе к делу, а не сразу на неделю
-              </p>
-              {shoppingList.fresh.map((g) => (
-                <ShoppingGroup key={g.key} title={g.title} items={g.items} checkedMap={checkedMap} onToggle={toggleItem} onToggleAll={toggleAllInGroup} />
-              ))}
-            </>
-          )}
+          {shoppingList.freshBatches.map((batch) => {
+            const batchTotal = batch.groups.reduce((s, g) => s + g.items.length, 0);
+            if (batchTotal === 0) return null;
+            return (
+              <React.Fragment key={batch.key}>
+                <div style={{ height: 1, background: t.BORDER, margin: '4px 0 22px' }} />
+                <SectionLabel>{batch.label}</SectionLabel>
+                <p style={{ fontSize: 12, color: t.TEXT_FAINT, marginTop: -4, marginBottom: 14 }}>
+                  Свежие продукты только на этот промежуток дней — не портятся заранее
+                </p>
+                {batch.groups.map((g) => (
+                  <ShoppingGroup key={g.key} title={g.title} items={g.items} checkedMap={checkedMap} onToggle={toggleItem} onToggleAll={toggleAllInGroup} />
+                ))}
+              </React.Fragment>
+            );
+          })}
 
           <p style={{ fontSize: 12, color: t.TEXT_FAINT, textAlign: 'center', marginTop: 8 }}>
             Количества — точные суммы по рецептам{multiplier !== 1 ? ` (×${multiplier})` : ''}, подгоняй на глаз под упаковки в магазине.
@@ -1023,12 +1183,209 @@ function ShoppingTab() {
 
 // ---------- Корневое приложение ----------
 
+function ProfileModal({ onClose }) {
+  const t = useTheme();
+  const { profile, loaded, error, saveProfile, isSupabaseConfigured } = useProfile();
+  const [form, setForm] = useState(profile);
+
+  useEffect(() => { if (loaded) setForm(profile); }, [loaded, profile]);
+
+  const update = (field, value) => setForm((f) => ({ ...f, [field]: value }));
+
+  const handleSave = () => {
+    saveProfile(form);
+  };
+
+  const macros = useMemo(() => calcTargetMacros(form), [form]);
+
+  return (
+    <div className="overlay-fade-in" style={{
+      position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    }} onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="sheet-enter"
+        style={{
+          width: '100%', maxWidth: 480, maxHeight: '88vh', background: t.BG,
+          borderRadius: '18px 18px 0 0', border: `1px solid ${t.BORDER}`, borderBottom: 'none',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 16px 12px', borderBottom: `1px solid ${t.BORDER}`, flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: t.TEXT, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <User size={16} /> Профиль
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 32, height: 32, borderRadius: 9, border: `1px solid ${t.BORDER}`, background: t.BG_INPUT,
+              color: t.TEXT_DIM, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        <div style={{ overflowY: 'auto', padding: 16, flex: 1, WebkitOverflowScrolling: 'touch' }}>
+          {!isSupabaseConfigured && (
+            <div style={{
+              background: 'rgba(204,159,61,0.1)', border: `1px solid ${t.GOLD}`, borderRadius: 10,
+              padding: '10px 13px', marginBottom: 14, fontSize: 12, color: t.TEXT_DIM, lineHeight: 1.5,
+            }}>
+              Профиль не сохранится между визитами — подключи Supabase (см. README).
+            </div>
+          )}
+          {error && (
+            <div style={{
+              background: 'rgba(168,51,76,0.14)', border: `1px solid ${t.ACCENT}`, borderRadius: 10,
+              padding: '10px 13px', marginBottom: 14, fontSize: 12.5, color: t.ACCENT_SOFT,
+            }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {[{ v: 'male', l: 'Мужчина' }, { v: 'female', l: 'Женщина' }].map((opt) => (
+              <button
+                key={opt.v}
+                onClick={() => update('sex', opt.v)}
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 10,
+                  border: `1px solid ${form.sex === opt.v ? t.ACCENT : t.BORDER}`,
+                  background: form.sex === opt.v ? 'rgba(168,51,76,0.16)' : 'transparent',
+                  color: form.sex === opt.v ? t.ACCENT_SOFT : t.TEXT_DIM,
+                  fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {opt.l}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <ProfileField label="Возраст" value={form.age} unit="лет" onChange={(v) => update('age', v)} />
+            <ProfileField label="Рост" value={form.heightCm} unit="см" onChange={(v) => update('heightCm', v)} />
+            <ProfileField label="Вес" value={form.weightKg} unit="кг" onChange={(v) => update('weightKg', v)} step={0.1} />
+          </div>
+
+          <div style={{ fontSize: 11.5, color: t.TEXT_FAINT, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 8, marginTop: 8 }}>
+            Активность
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+            {ACTIVITY_LEVELS.map((lvl) => {
+              const active = form.activity === lvl.value;
+              return (
+                <button
+                  key={lvl.value}
+                  onClick={() => update('activity', lvl.value)}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '10px 13px', borderRadius: 10, textAlign: 'left',
+                    border: `1px solid ${active ? t.ACCENT : t.BORDER}`,
+                    background: active ? 'rgba(168,51,76,0.12)' : t.BG_RAISED,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: active ? t.ACCENT_SOFT : t.TEXT }}>{lvl.label}</span>
+                  <span style={{ fontSize: 11.5, color: t.TEXT_FAINT }}>{lvl.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ fontSize: 11.5, color: t.TEXT_FAINT, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 8 }}>
+            Цель
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
+            {GOALS.map((g) => {
+              const active = form.goal === g.value;
+              return (
+                <button
+                  key={g.value}
+                  onClick={() => update('goal', g.value)}
+                  style={{
+                    flex: '1 1 auto', padding: '9px 12px', borderRadius: 9,
+                    border: `1px solid ${active ? t.ACCENT : t.BORDER}`,
+                    background: active ? 'rgba(168,51,76,0.16)' : 'transparent',
+                    color: active ? t.ACCENT_SOFT : t.TEXT_DIM,
+                    fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {g.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{
+            background: t.BG_RAISED, border: `1px solid ${t.BORDER}`, borderRadius: 13, padding: 16, marginBottom: 16,
+          }}>
+            <div style={{ fontSize: 11, color: t.TEXT_FAINT, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 10 }}>
+              Расчётная норма на день
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: t.TEXT, marginBottom: 10, fontFamily: "'SF Mono', monospace" }}>
+              {macros.targetKcal} ккал
+            </div>
+            <MacroPlate protein={macros.proteinG} fat={macros.fatG} carbs={macros.carbsG} compact />
+            <div style={{ fontSize: 11.5, color: t.TEXT_FAINT, marginTop: 10, lineHeight: 1.5 }}>
+              Базовый обмен (BMR): {macros.bmr} ккал · С учётом активности (TDEE): {macros.tdee} ккал
+            </div>
+          </div>
+
+          <button
+            onClick={handleSave}
+            style={{
+              width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
+              background: t.ACCENT, color: '#FFF', fontSize: 14.5, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Сохранить
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileField({ label, value, unit, onChange, step = 1 }) {
+  const t = useTheme();
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ fontSize: 11, color: t.TEXT_FAINT, fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+        {label}
+      </div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 4, background: t.BG_INPUT,
+        border: `1px solid ${t.BORDER}`, borderRadius: 10, padding: '8px 10px',
+      }}>
+        <input
+          type="number"
+          value={value}
+          step={step}
+          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          style={{
+            width: '100%', border: 'none', background: 'transparent', color: t.TEXT,
+            fontSize: 15, fontWeight: 700, fontFamily: 'inherit', outline: 'none',
+          }}
+        />
+        <span style={{ fontSize: 11.5, color: t.TEXT_FAINT, flexShrink: 0 }}>{unit}</span>
+      </div>
+    </div>
+  );
+}
+
 function NutritionAppInner({ mode, isDark, cycle }) {
   const t = useTheme();
   const TAB_ORDER = ['recipes', 'plan', 'shopping'];
   const [tab, setTab] = useState('plan');
   const [slideDir, setSlideDir] = useState(0);
   const [openRecipe, setOpenRecipe] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const touchRef = React.useRef({ x: 0, y: 0, active: false });
 
   useTelegramTheme();
@@ -1089,6 +1446,21 @@ function NutritionAppInner({ mode, isDark, cycle }) {
           to { opacity: 1; transform: translateY(0); }
         }
         .content-fade-in { animation: contentFadeIn 0.35s ease-out; }
+        @keyframes recipeDetailEnter {
+          from { opacity: 0; transform: translateY(28px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .recipe-detail-enter { animation: recipeDetailEnter 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+        @keyframes sheetEnter {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        .sheet-enter { animation: sheetEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+        @keyframes overlayFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .overlay-fade-in { animation: overlayFadeIn 0.25s ease-out; }
       `}</style>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 22 }}>
@@ -1097,13 +1469,26 @@ function NutritionAppInner({ mode, isDark, cycle }) {
             fontSize: 22, fontWeight: 700, color: t.TEXT, margin: 0, letterSpacing: '-0.01em',
             fontFamily: "'Fraunces', Georgia, serif",
           }}>
-            Грузинская кухня
+            Дневник питания
           </h1>
           <p style={{ fontSize: 13, color: t.TEXT_FAINT, margin: '4px 0 0' }}>
             Рецепты, план недели и покупки
           </p>
         </div>
-        <ThemeToggle mode={mode} isDark={isDark} cycle={cycle} />
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => setProfileOpen(true)}
+            aria-label="Профиль"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 38, height: 38, borderRadius: 10, border: `1px solid ${t.BORDER}`,
+              background: t.BG_INPUT, color: t.TEXT_DIM, cursor: 'pointer',
+            }}
+          >
+            <User size={16} />
+          </button>
+          <ThemeToggle mode={mode} isDark={isDark} cycle={cycle} />
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 5, marginBottom: 24, width: '100%', minWidth: 0 }}>
@@ -1125,6 +1510,7 @@ function NutritionAppInner({ mode, isDark, cycle }) {
       </div>
 
       {openRecipe && <RecipeDetail recipe={openRecipe} onClose={() => setOpenRecipe(null)} />}
+      {profileOpen && <ProfileModal onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }

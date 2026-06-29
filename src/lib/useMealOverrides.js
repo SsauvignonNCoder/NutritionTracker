@@ -31,19 +31,26 @@ export function useMealOverrides(weekId) {
     let cancelled = false;
     (async () => {
       setLoaded(false);
-      const { data, error: err } = await supabase
-        .from(TABLE)
-        .select('day_index, meal_slot, recipe_id')
-        .eq('week_id', weekId);
-      if (cancelled) return;
-      if (err) {
-        setError('Не удалось загрузить изменения плана');
-      } else {
-        const map = {};
-        (data || []).forEach((row) => {
-          map[`${row.day_index}:${row.meal_slot}`] = row.recipe_id;
-        });
-        setOverrides(map);
+      try {
+        const { data, error: err } = await supabase
+          .from(TABLE)
+          .select('day_index, meal_slot, recipe_id')
+          .eq('week_id', weekId);
+        if (cancelled) return;
+        if (err) {
+          console.error('Supabase select error:', err);
+          setError(`Не удалось загрузить изменения плана: ${err.message || err.code || 'неизвестная ошибка'}`);
+        } else {
+          const map = {};
+          (data || []).forEach((row) => {
+            map[`${row.day_index}:${row.meal_slot}`] = row.recipe_id;
+          });
+          setOverrides(map);
+        }
+      } catch (e) {
+        if (cancelled) return;
+        console.error('Supabase network/exception error:', e);
+        setError(`Не удалось загрузить изменения плана: ${e.message || 'ошибка сети'}`);
       }
       setLoaded(true);
     })();

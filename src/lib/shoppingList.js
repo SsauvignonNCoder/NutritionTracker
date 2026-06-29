@@ -2,15 +2,40 @@
 // Логика: проходим по всем 7 дням недели, собираем ингредиенты всех выбранных
 // рецептов (+ ручные добавки вроде "breakfastExtra"), суммируем одинаковые
 // продукты (по полю item) и раскладываем по категориям и сроку хранения.
+//
+// Все ингредиенты в данных хранятся в граммах/мл для точного сложения.
+// Но в магазине авокадо или хлеб не продаются "по 73 грамма" — поэтому для
+// штучных продуктов (PIECE_WEIGHTS) список переводит итоговые граммы обратно
+// в штуки и округляет ВВЕРХ (нельзя купить половину авокадо).
+//
+// Свежие продукты (shelfLife: 'fresh') разбиваются на два захода закупки —
+// неделя делится на блок ПН–СР (закупка в Вс/Пн) и блок ЧТ–ВС (закупка в Ср) —
+// чтобы не покупать всё сразу на 7 дней и не портить продукты с коротким сроком.
 
 import { RECIPES_BY_ID } from '../data/recipes.js';
 
 const MEAL_SLOTS = ['breakfast', 'lunch', 'pretrain', 'dinner', 'snack'];
 
+// Средний вес одной штуки для продуктов, которые физически покупаются поштучно.
+// Используется только для отображения в списке покупок — данные рецептов
+// при этом продолжают хранить точные граммы.
+const PIECE_WEIGHTS = {
+  avocado: 200, banana: 120, bell_pepper: 150, cucumber: 150,
+  eggs: 50, lavash: 60, onion: 100, tomato: 150,
+  bread: 30, bread_wholegrain: 30,
+};
+
+// Разбивка недели на два блока закупки свежих продуктов.
+// dayIndex 0-2 = ПН-СР (первый блок, закупка в Вс/Пн)
+// dayIndex 3-6 = ЧТ-ВС (второй блок, закупка в Ср)
+const FRESH_BATCHES = [
+  { key: 'batch1', label: 'Заход 1 — купить в Вс/Пн (на ПН–СР)', dayIndexes: [0, 1, 2] },
+  { key: 'batch2', label: 'Заход 2 — купить в Ср (на ЧТ–ВС)', dayIndexes: [3, 4, 5, 6] },
+];
+
 // Собирает массив ингредиентов одного дня (из рецептов + ручных Extra-добавок).
-// overridesForDay — объект { mealSlot: recipeId } с заменами блюд для этого дня
-// (если блюдо заменено, ручная Extra-добавка к старому блюду больше не применяется,
-// так как относилась именно к исходному рецепту).
+// Если блюдо заменено через override, ручная Extra-добавка к старому блюду
+// больше не применяется, так как относилась именно к исходному рецепту.
 function collectDayIngredients(day, dayIndex, getOverride) {
   const collected = [];
 
@@ -37,8 +62,6 @@ function collectDayIngredients(day, dayIndex, getOverride) {
 }
 
 // Суммирует список ингредиентов по item+unit.
-// Если у одного item встречаются разные unit — считаем их раздельными строками
-// (это сигнал, что в данных стоит унифицировать единицу для этого продукта).
 function aggregateIngredients(allIngredients) {
   const byKey = new Map();
 
@@ -54,7 +77,7 @@ function aggregateIngredients(allIngredients) {
         hasQty: false,
         category: item.category,
         shelfLife: item.shelfLife,
-        count: 0, // сколько раз встретился — пригодится для "по вкусу"/щепоток
+        count: 0,
       });
     }
     const agg = byKey.get(key);
@@ -72,11 +95,21 @@ function aggregateIngredients(allIngredients) {
 // multiplier — коэффициент порций (1 = ровно по рецептам, 2 = на двоих и т.д.)
 function formatQty(agg, multiplier) {
   if (!agg.hasQty) {
-    // Позиции без числа (щепотка, по вкусу) — просто отмечаем, что нужно докупить/иметь под рукой
     return agg.count > 1 ? `× ${agg.count} раза за неделю` : 'по необходимости';
   }
-  // Округляем до 1 знака после запятой, если есть остаток
-  const q = Math.round(agg.qty * multiplier * 10) / 10;
+
+  const totalGrams = agg.qty * multiplier;
+  const pieceWeight = PIECE_WEIGHTS[agg.item];
+
+  if (pieceWeight && agg.unit === 'г') {
+    // Штучный продукт: переводим граммы в штуки и округляем ВВЕРХ —
+    // нельзя купить половину авокадо или 4.3 ломтика хлеба
+    const pieces = Math.ceil(totalGrams / pieceWeight);
+    const roundedGrams = Math.round(totalGrams);
+    return `${pieces} шт (≈${roundedGrams} г)`;
+  }
+
+  const q = Math.round(totalGrams);
   return `${q} ${agg.unit}`;
 }
 
@@ -105,17 +138,32 @@ function groupByCategory(aggregatedItems, categoriesMeta, multiplier) {
 // multiplier — коэффициент порций, по умолчанию 1 (ровно по рецептам, без запаса)
 // getOverride(dayIndex, mealSlot) — опциональная функция, возвращающая id рецепта-замены
 // (из useMealOverrides), если пользователь отредактировал план
+//
+// Возвращает:
+//   { long: [...группы...], freshBatches: [{ key, label, groups: [...] }, ...] }
+// "long" — единый список на всю неделю (хранится долго).
+// "freshBatches" — свежие продукты, разбитые на два захода закупки по дням использования.
 export function buildShoppingList(week, categoriesMeta, multiplier = 1, getOverride = null) {
-  if (!week) return { long: [], fresh: [] };
+  if (!week) return { long: [], freshBatches: [] };
 
+  // long-список считается по всей неделе сразу — срок хранения позволяет
   const allIngredients = week.days.flatMap((day, dayIndex) => collectDayIngredients(day, dayIndex, getOverride));
   const aggregated = aggregateIngredients(allIngredients);
-
   const longItems = aggregated.filter((a) => a.shelfLife === 'long');
-  const freshItems = aggregated.filter((a) => a.shelfLife === 'fresh');
+  const long = groupByCategory(longItems, categoriesMeta, multiplier);
 
-  return {
-    long: groupByCategory(longItems, categoriesMeta, multiplier),
-    fresh: groupByCategory(freshItems, categoriesMeta, multiplier),
-  };
+  // fresh-список считается отдельно для каждого блока дней (заход 1 / заход 2)
+  const freshBatches = FRESH_BATCHES.map((batch) => {
+    const batchIngredients = batch.dayIndexes.flatMap((dayIndex) =>
+      collectDayIngredients(week.days[dayIndex], dayIndex, getOverride)
+    );
+    const batchAggregated = aggregateIngredients(batchIngredients).filter((a) => a.shelfLife === 'fresh');
+    return {
+      key: batch.key,
+      label: batch.label,
+      groups: groupByCategory(batchAggregated, categoriesMeta, multiplier),
+    };
+  });
+
+  return { long, freshBatches };
 }

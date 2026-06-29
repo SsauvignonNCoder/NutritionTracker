@@ -19,12 +19,6 @@ export const WEEKS = [
   {
     id: '2026-06-29',
     label: '29.06 — 05.07',
-    note: 'Среднее за день: ~1900–2000 ккал · Б 145–155 г · Вес 62 кг · рост 163 см · тренировка вечером 18:00–19:00. КБЖУ блюд пересчитаны по стандартным таблицам — добавлен доп. перекус (snack) на каждый день, чтобы вернуться к целевому калоражу.',
-    weekOfTheWeek: {
-      title: 'Пенновани — грузинский омлет',
-      desc: 'Яйца взбить с творогом, зеленью (кинза, укроп) и щепоткой соли, обжарить на сухой сковороде 4–5 мин под крышкой на слабом огне.',
-    },
-    logic: 'Чахохбили и куриная грудка с гречкой повторяются как опорные блюда. Хинкали и кучмачи — 1 раз в неделю как более калорийное разнообразие.',
     days: [
       {
         day: 'ПН', date: '29.06', kcal: 1977,
@@ -70,13 +64,8 @@ export const WEEKS = [
       },
       {
         day: 'СБ', date: '04.07', kcal: 2025,
-        breakfast: null,
-        breakfastCustom: 'Пенновани — грузинский омлет с творогом и зеленью (355 ккал · Б36 Ж21 У4)',
-        breakfastExtra: [
-          { item: 'eggs', label: 'Яйца', qty: 3, unit: 'шт', category: 'protein', shelfLife: 'long' },
-          { item: 'cottage_cheese', label: 'Творог 5%', qty: 100, unit: 'г', category: 'dairy', shelfLife: 'fresh' },
-          { item: 'herbs_dill_parsley', label: 'Зелень (кинза/укроп)', qty: 1, unit: 'пучок', category: 'produce', shelfLife: 'fresh' },
-        ],
+        breakfast: 'b6-pennovani-omlet',
+        breakfastNote: 'Новое блюдо недели',
         lunch: 'l5-hinkali-govyadina',
         pretrain: 'p1-tost-med-banan',
         dinner: 'd2-odzhahuri-oblegchennaya',
@@ -90,12 +79,6 @@ export const WEEKS = [
         dinner: 'd1-lobio-legkoe-kurinaya-grudka',
         snack: 'b5-grecheskiy-yogurt-orehi-yagody',
       },
-    ],
-    supplements: [
-      { name: 'Протеин', timing: 'отдельно от белковых блюд' },
-      { name: 'Креатин', timing: 'после тренировки' },
-      { name: 'Коллаген / рыбий жир', timing: 'с жирной едой' },
-      { name: 'Магний', timing: 'вечером, перед сном' },
     ],
   },
 ];
