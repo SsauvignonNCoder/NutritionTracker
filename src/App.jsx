@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useContext, createContext } from 'react';
 import {
   BookOpen, CalendarDays, ShoppingCart, ChevronDown, ChevronLeft, ChevronRight,
-  Clock, Sun, Moon, X, ExternalLink,
+  Clock, Sun, Moon, X, ExternalLink, Pencil, RotateCcw,
 } from 'lucide-react';
 import { RECIPES, RECIPES_BY_ID, MEAL_TYPES, CATEGORIES } from './data/recipes.js';
 import { WEEKS, getLatestWeek } from './data/weeks.js';
 import { buildShoppingList } from './lib/shoppingList.js';
+import { useMealOverrides } from './lib/useMealOverrides.js';
 
 // ---------- Тема ----------
 const THEMES = {
@@ -202,33 +203,71 @@ function RecipeCard({ recipe, onOpen }) {
 
 function RecipeDetail({ recipe, onClose }) {
   const t = useTheme();
+  const touchRef = React.useRef({ y: 0, active: false });
+  const scrollRef = React.useRef(null);
+
   if (!recipe) return null;
 
+  const handleTouchStart = (e) => {
+    // Свайп для закрытия работает только если страница не проскроллена —
+    // иначе обычный скролл вверх внутри рецепта закрывал бы экран случайно.
+    if (scrollRef.current && scrollRef.current.scrollTop > 4) {
+      touchRef.current.active = false;
+      return;
+    }
+    touchRef.current = { y: e.touches[0].clientY, active: true };
+  };
+
+  const handleTouchMove = (e) => {
+    if (!touchRef.current.active) return;
+    const dy = e.touches[0].clientY - touchRef.current.y;
+    if (dy > 90) {
+      touchRef.current.active = false;
+      onClose();
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchRef.current.active = false;
+  };
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 50, background: t.BG,
-      overflowY: 'auto', WebkitOverflowScrolling: 'touch',
-    }}>
+    <div
+      ref={scrollRef}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50, background: t.BG,
+        overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+      }}
+    >
       <div style={{
-        maxWidth: 480, margin: '0 auto', minHeight: '100vh',
-        padding: '20px max(18px, env(safe-area-inset-right)) 40px max(18px, env(safe-area-inset-left))',
+        position: 'sticky', top: 0, zIndex: 5, background: t.BG,
+        maxWidth: 480, margin: '0 auto',
+        padding: '14px max(18px, env(safe-area-inset-right)) 10px max(18px, env(safe-area-inset-left))',
+        boxSizing: 'border-box', borderBottom: `1px solid ${t.BORDER}`,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <button
+          onClick={onClose}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '8px 14px 8px 10px', borderRadius: 10, border: `1px solid ${t.BORDER}`,
+            background: t.BG_INPUT, color: t.TEXT, cursor: 'pointer', flexShrink: 0,
+            fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+          }}
+        >
+          <ChevronLeft size={18} /> Назад
+        </button>
+        <MealTypeBadge mealType={recipe.mealType} />
+      </div>
+
+      <div style={{
+        maxWidth: 480, margin: '0 auto',
+        padding: '18px max(18px, env(safe-area-inset-right)) 40px max(18px, env(safe-area-inset-left))',
         boxSizing: 'border-box',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <MealTypeBadge mealType={recipe.mealType} />
-          <button
-            onClick={onClose}
-            aria-label="Закрыть"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 36, height: 36, borderRadius: 10, border: `1px solid ${t.BORDER}`,
-              background: t.BG_INPUT, color: t.TEXT_DIM, cursor: 'pointer', flexShrink: 0,
-            }}
-          >
-            <X size={17} />
-          </button>
-        </div>
-
         <h1 style={{
           fontSize: 25, fontWeight: 700, color: t.TEXT, margin: '0 0 14px', lineHeight: 1.2,
           fontFamily: "'Fraunces', Georgia, serif",
@@ -267,28 +306,28 @@ function RecipeDetail({ recipe, onClose }) {
         <div style={{ marginBottom: 22 }}>
           {recipe.ingredients.map((ing, i) => (
             <div key={i} style={{
-              display: 'flex', justifyContent: 'space-between', gap: 12, padding: '9px 2px',
+              display: 'flex', justifyContent: 'flex-start', gap: 10, padding: '9px 2px',
               borderBottom: i === recipe.ingredients.length - 1 ? 'none' : `1px solid ${t.BORDER}`,
               fontSize: 14,
             }}>
-              <span style={{ color: t.TEXT, minWidth: 0 }}>{ing.name}</span>
-              <span style={{ color: t.TEXT_DIM, fontFamily: "'SF Mono', monospace", fontSize: 13, flexShrink: 0, textAlign: 'right' }}>{ing.display}</span>
+              <span style={{ color: t.TEXT, minWidth: 0, flex: 1 }}>{ing.label}</span>
+              <span style={{ color: t.TEXT_DIM, fontFamily: "'SF Mono', monospace", fontSize: 13, flexShrink: 0 }}>{ing.display}</span>
             </div>
           ))}
         </div>
 
         <SectionLabel>Способ приготовления</SectionLabel>
-        <div style={{ marginBottom: 22, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ marginBottom: 22, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {recipe.steps.map((step, i) => (
             <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               <span style={{
-                flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: t.BG_INPUT,
-                border: `1px solid ${t.BORDER}`, color: t.ACCENT_SOFT, fontSize: 11.5, fontWeight: 800,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1,
+                flexShrink: 0, width: 24, height: 24, borderRadius: '50%', background: t.BG_INPUT,
+                border: `1px solid ${t.BORDER}`, color: t.ACCENT_SOFT, fontSize: 12, fontWeight: 800,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
               }}>
                 {i + 1}
               </span>
-              <span style={{ fontSize: 14, color: t.TEXT, lineHeight: 1.5 }}>{step}</span>
+              <span style={{ fontSize: 14.5, color: t.TEXT, lineHeight: 1.55, paddingTop: 2 }}>{step}</span>
             </div>
           ))}
         </div>
@@ -381,45 +420,67 @@ function WeekSwitcher({ weeks, activeId, onChange }) {
   );
 }
 
-function DayMealRow({ mealType, recipeId, customLabel, note, onOpenRecipe }) {
+function DayMealRow({ mealType, recipeId, customLabel, note, onOpenRecipe, isOverridden, onEdit }) {
   const t = useTheme();
   const meta = MEAL_TYPES[mealType];
   const recipe = recipeId ? RECIPES_BY_ID[recipeId] : null;
 
   return (
-    <button
-      onClick={() => recipe && onOpenRecipe(recipe)}
-      disabled={!recipe}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-        padding: '10px 2px', background: 'transparent', border: 'none',
-        borderBottom: `1px solid ${t.BORDER}`, cursor: recipe ? 'pointer' : 'default',
-        fontFamily: 'inherit',
-      }}
-    >
-      <span style={{
-        flexShrink: 0, width: 30, height: 30, borderRadius: 9, background: t.BG_INPUT,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
-      }}>
-        {meta.icon}
-      </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, color: t.TEXT_FAINT, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 1 }}>
-          {meta.label}
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+      padding: '10px 2px', borderBottom: `1px solid ${t.BORDER}`,
+    }}>
+      <button
+        onClick={() => recipe && onOpenRecipe(recipe)}
+        disabled={!recipe}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, textAlign: 'left',
+          background: 'transparent', border: 'none', cursor: recipe ? 'pointer' : 'default',
+          fontFamily: 'inherit', padding: 0,
+        }}
+      >
+        <span style={{
+          flexShrink: 0, width: 30, height: 30, borderRadius: 9, background: t.BG_INPUT,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
+        }}>
+          {meta.icon}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, color: t.TEXT_FAINT, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {meta.label}
+            {isOverridden && (
+              <span style={{ color: t.ACCENT_SOFT, fontSize: 10, fontWeight: 700, background: 'rgba(168,51,76,0.14)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>
+                заменено
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 14, color: t.TEXT, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {recipe ? recipe.title : customLabel}
+          </div>
+          {note && (
+            <div style={{ fontSize: 12, color: t.HERB, fontWeight: 600, marginTop: 1 }}>{note}</div>
+          )}
         </div>
-        <div style={{ fontSize: 14, color: t.TEXT, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {recipe ? recipe.title : customLabel}
-        </div>
-        {note && (
-          <div style={{ fontSize: 12, color: t.HERB, fontWeight: 600, marginTop: 1 }}>{note}</div>
-        )}
-      </div>
-      {recipe && <ChevronRight size={16} style={{ color: t.TEXT_FAINT, flexShrink: 0 }} />}
-    </button>
+        {recipe && <ChevronRight size={16} style={{ color: t.TEXT_FAINT, flexShrink: 0 }} />}
+      </button>
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          aria-label="Заменить блюдо"
+          style={{
+            flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: `1px solid ${t.BORDER}`,
+            background: t.BG_INPUT, color: t.TEXT_DIM, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Pencil size={14} />
+        </button>
+      )}
+    </div>
   );
 }
 
-function DayCard({ day, onOpenRecipe, defaultOpen }) {
+function DayCard({ day, dayIndex, onOpenRecipe, defaultOpen, getOverride, hasOverride, onEditMeal }) {
   const t = useTheme();
   const [open, setOpen] = useState(!!defaultOpen);
   const today = new Date();
@@ -427,11 +488,19 @@ function DayCard({ day, onOpenRecipe, defaultOpen }) {
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const isToday = day.date === `${dd}.${mm}`;
 
+  // Применяем override поверх дефолтного блюда из плана, если он есть
+  const resolveMeal = (mealType, defaultRecipeId, extra = {}) => {
+    const overridden = hasOverride(dayIndex, mealType);
+    const recipeId = overridden ? getOverride(dayIndex, mealType) : defaultRecipeId;
+    return { mealType, recipeId, isOverridden: overridden, ...extra };
+  };
+
   const meals = [
-    { mealType: 'breakfast', recipeId: day.breakfast, customLabel: day.breakfastCustom },
-    { mealType: 'lunch', recipeId: day.lunch, note: day.lunchNote },
-    { mealType: 'pretrain', recipeId: day.pretrain },
-    { mealType: 'dinner', recipeId: day.dinner },
+    resolveMeal('breakfast', day.breakfast, { customLabel: day.breakfastCustom }),
+    resolveMeal('lunch', day.lunch, { note: day.lunchNote }),
+    resolveMeal('pretrain', day.pretrain),
+    resolveMeal('dinner', day.dinner),
+    ...(day.snack ? [resolveMeal('snack', day.snack)] : []),
   ];
 
   return (
@@ -470,10 +539,125 @@ function DayCard({ day, onOpenRecipe, defaultOpen }) {
       {open && (
         <div style={{ padding: '0 14px 6px' }}>
           {meals.map((m) => (
-            <DayMealRow key={m.mealType} {...m} onOpenRecipe={onOpenRecipe} />
+            <DayMealRow
+              key={m.mealType}
+              {...m}
+              onOpenRecipe={onOpenRecipe}
+              onEdit={() => onEditMeal(dayIndex, m.mealType, m.recipeId)}
+            />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function RecipePicker({ mealType, currentRecipeId, hasOverride, onPick, onResetToDefault, onClose }) {
+  const t = useTheme();
+  const meta = MEAL_TYPES[mealType];
+  const isSnack = mealType === 'snack';
+  // Доп. перекус (snack) не привязан к конкретному типу блюда — можно выбрать что угодно из каталога
+  const options = useMemo(
+    () => (isSnack ? RECIPES : RECIPES.filter((r) => r.mealType === mealType)),
+    [mealType, isSnack]
+  );
+  // При выборе из всего каталога группируем по исходному типу блюда для удобной навигации
+  const groups = useMemo(() => {
+    if (!isSnack) return [{ key: mealType, label: null, items: options }];
+    const byType = {};
+    options.forEach((r) => {
+      if (!byType[r.mealType]) byType[r.mealType] = [];
+      byType[r.mealType].push(r);
+    });
+    return Object.entries(MEAL_TYPES)
+      .filter(([key]) => byType[key])
+      .map(([key, m]) => ({ key, label: `${m.icon} ${m.label}`, items: byType[key] }));
+  }, [options, isSnack, mealType]);
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    }} onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 480, maxHeight: '80vh', background: t.BG,
+          borderRadius: '18px 18px 0 0', border: `1px solid ${t.BORDER}`, borderBottom: 'none',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 16px 12px', borderBottom: `1px solid ${t.BORDER}`, flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: t.TEXT, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span>{meta.icon}</span> Заменить {meta.label.toLowerCase()}
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 32, height: 32, borderRadius: 9, border: `1px solid ${t.BORDER}`, background: t.BG_INPUT,
+              color: t.TEXT_DIM, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        <div style={{ overflowY: 'auto', padding: 14, flex: 1, WebkitOverflowScrolling: 'touch' }}>
+          {hasOverride && (
+            <button
+              onClick={onResetToDefault}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                padding: '12px 14px', borderRadius: 11, marginBottom: 10,
+                border: `1px dashed ${t.BORDER}`, background: 'transparent', color: t.TEXT_DIM,
+                fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              <RotateCcw size={15} /> Вернуть исходное блюдо плана
+            </button>
+          )}
+          {groups.map((group) => (
+            <div key={group.key} style={{ marginBottom: 14 }}>
+              {group.label && (
+                <div style={{ fontSize: 12, color: t.TEXT_FAINT, fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                  {group.label}
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {group.items.map((r) => {
+                  const isCurrent = r.id === currentRecipeId;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => onPick(r.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                        width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 11,
+                        border: `1px solid ${isCurrent ? t.ACCENT : t.BORDER}`,
+                        background: isCurrent ? 'rgba(168,51,76,0.12)' : t.BG_RAISED,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: isCurrent ? t.ACCENT_SOFT : t.TEXT, marginBottom: 2 }}>
+                          {r.title}
+                        </div>
+                        <div style={{ fontSize: 12, color: t.TEXT_FAINT }}>
+                          {r.kcal} ккал · Б{r.protein} Ж{r.fat} У{r.carbs}
+                        </div>
+                      </div>
+                      {isCurrent && <span style={{ color: t.ACCENT_SOFT, fontSize: 16, flexShrink: 0 }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -482,18 +666,55 @@ function PlanTab({ onOpenRecipe }) {
   const t = useTheme();
   const [activeWeekId, setActiveWeekId] = useState(getLatestWeek()?.id);
   const week = WEEKS.find((w) => w.id === activeWeekId) || getLatestWeek();
+  const { loaded, error, getOverride, hasOverride, setOverride, isSupabaseConfigured } = useMealOverrides(week?.id);
+  const [editingMeal, setEditingMeal] = useState(null); // { dayIndex, mealType, currentRecipeId }
 
   if (!week) {
     return <div style={{ color: t.TEXT_FAINT, fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Пока нет планов на неделю.</div>;
   }
 
+  const handleEditMeal = (dayIndex, mealType, currentRecipeId) => {
+    setEditingMeal({ dayIndex, mealType, currentRecipeId });
+  };
+
+  const handlePick = async (recipeId) => {
+    if (editingMeal) {
+      await setOverride(editingMeal.dayIndex, editingMeal.mealType, recipeId);
+    }
+    setEditingMeal(null);
+  };
+
+  const handleResetToDefault = async () => {
+    if (editingMeal) {
+      await setOverride(editingMeal.dayIndex, editingMeal.mealType, null);
+    }
+    setEditingMeal(null);
+  };
+
   return (
     <div>
       <WeekSwitcher weeks={WEEKS} activeId={week.id} onChange={setActiveWeekId} />
 
-      <p style={{ fontSize: 12.5, color: t.TEXT_FAINT, lineHeight: 1.5, marginBottom: 18 }}>
+      <p style={{ fontSize: 12.5, color: t.TEXT_FAINT, lineHeight: 1.5, marginBottom: 14 }}>
         {week.note}
       </p>
+
+      {!isSupabaseConfigured && (
+        <div style={{
+          background: 'rgba(204,159,61,0.1)', border: `1px solid ${t.GOLD}`, borderRadius: 10,
+          padding: '10px 13px', marginBottom: 14, fontSize: 12, color: t.TEXT_DIM, lineHeight: 1.5,
+        }}>
+          Замены блюд работают, но не сохраняются между визитами — подключи Supabase (см. README), чтобы план запоминался навсегда.
+        </div>
+      )}
+      {error && (
+        <div style={{
+          background: 'rgba(168,51,76,0.14)', border: `1px solid ${t.ACCENT}`, borderRadius: 10,
+          padding: '10px 13px', marginBottom: 14, fontSize: 12.5, color: t.ACCENT_SOFT,
+        }}>
+          {error}
+        </div>
+      )}
 
       {week.weekOfTheWeek && (
         <div style={{
@@ -520,9 +741,21 @@ function PlanTab({ onOpenRecipe }) {
       )}
 
       <SectionLabel>Дни</SectionLabel>
+      <p style={{ fontSize: 12, color: t.TEXT_FAINT, marginTop: -6, marginBottom: 14 }}>
+        Нажми ✏️ рядом с блюдом, чтобы заменить его на другое из той же категории.
+      </p>
       <div style={{ marginBottom: 22 }}>
         {week.days.map((d, i) => (
-          <DayCard key={d.day + d.date} day={d} onOpenRecipe={onOpenRecipe} defaultOpen={i === 0} />
+          <DayCard
+            key={d.day + d.date}
+            day={d}
+            dayIndex={i}
+            onOpenRecipe={onOpenRecipe}
+            defaultOpen={i === 0}
+            getOverride={getOverride}
+            hasOverride={hasOverride}
+            onEditMeal={handleEditMeal}
+          />
         ))}
       </div>
 
@@ -542,6 +775,17 @@ function PlanTab({ onOpenRecipe }) {
             ))}
           </div>
         </>
+      )}
+
+      {editingMeal && (
+        <RecipePicker
+          mealType={editingMeal.mealType}
+          currentRecipeId={editingMeal.currentRecipeId}
+          hasOverride={hasOverride(editingMeal.dayIndex, editingMeal.mealType)}
+          onPick={handlePick}
+          onResetToDefault={handleResetToDefault}
+          onClose={() => setEditingMeal(null)}
+        />
       )}
     </div>
   );
@@ -602,12 +846,29 @@ function RecipesTab({ onOpenRecipe }) {
 
 // ---------- Вкладка: Покупки ----------
 
-function ShoppingGroup({ title, items, checkedMap, onToggle }) {
+function ShoppingGroup({ title, items, checkedMap, onToggle, onToggleAll }) {
   const t = useTheme();
+  const allChecked = items.length > 0 && items.every((it) => checkedMap[it.item]);
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: t.TEXT, marginBottom: 8 }}>{title}</div>
+      <button
+        onClick={() => onToggleAll(items, !allChecked)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+          background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >
+        <span style={{
+          flexShrink: 0, width: 16, height: 16, borderRadius: 5,
+          border: `2px solid ${allChecked ? t.HERB : t.TEXT_FAINT}`,
+          background: allChecked ? t.HERB : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#FFF',
+        }}>
+          {allChecked ? '✓' : ''}
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: t.TEXT }}>{title}</span>
+      </button>
       <div style={{ background: t.BG_RAISED, border: `1px solid ${t.BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
         {items.map((it, i) => {
           const isChecked = !!checkedMap[it.item];
@@ -686,10 +947,22 @@ function ShoppingTab() {
   const week = WEEKS.find((w) => w.id === activeWeekId) || getLatestWeek();
   const [checkedMap, setCheckedMap] = useState({});
   const [multiplier, setMultiplier] = useState(1);
+  const { getOverride, loaded: overridesLoaded } = useMealOverrides(week?.id);
 
-  const shoppingList = useMemo(() => buildShoppingList(week, CATEGORIES, multiplier), [week, multiplier]);
+  const shoppingList = useMemo(
+    () => buildShoppingList(week, CATEGORIES, multiplier, getOverride),
+    [week, multiplier, getOverride, overridesLoaded]
+  );
 
   const toggleItem = (itemKey) => setCheckedMap((c) => ({ ...c, [itemKey]: !c[itemKey] }));
+
+  const toggleAllInGroup = (items, checkedState) => {
+    setCheckedMap((c) => {
+      const next = { ...c };
+      items.forEach((it) => { next[it.item] = checkedState; });
+      return next;
+    });
+  };
 
   if (!week) {
     return <div style={{ color: t.TEXT_FAINT, fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Пока нет плана на эту неделю.</div>;
@@ -721,7 +994,7 @@ function ShoppingTab() {
                 Хранится долго — холодильник/морозилка/полка
               </p>
               {shoppingList.long.map((g) => (
-                <ShoppingGroup key={g.key} title={g.title} items={g.items} checkedMap={checkedMap} onToggle={toggleItem} />
+                <ShoppingGroup key={g.key} title={g.title} items={g.items} checkedMap={checkedMap} onToggle={toggleItem} onToggleAll={toggleAllInGroup} />
               ))}
             </>
           )}
@@ -734,7 +1007,7 @@ function ShoppingTab() {
                 Срок хранения 2–4 дня — лучше брать ближе к делу, а не сразу на неделю
               </p>
               {shoppingList.fresh.map((g) => (
-                <ShoppingGroup key={g.key} title={g.title} items={g.items} checkedMap={checkedMap} onToggle={toggleItem} />
+                <ShoppingGroup key={g.key} title={g.title} items={g.items} checkedMap={checkedMap} onToggle={toggleItem} onToggleAll={toggleAllInGroup} />
               ))}
             </>
           )}

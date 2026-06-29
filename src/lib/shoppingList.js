@@ -5,24 +5,31 @@
 
 import { RECIPES_BY_ID } from '../data/recipes.js';
 
-const MEAL_SLOTS = ['breakfast', 'lunch', 'pretrain', 'dinner'];
+const MEAL_SLOTS = ['breakfast', 'lunch', 'pretrain', 'dinner', 'snack'];
 
-// Собирает массив ингредиентов одного дня (из рецептов + ручных Extra-добавок)
-function collectDayIngredients(day) {
+// Собирает массив ингредиентов одного дня (из рецептов + ручных Extra-добавок).
+// overridesForDay — объект { mealSlot: recipeId } с заменами блюд для этого дня
+// (если блюдо заменено, ручная Extra-добавка к старому блюду больше не применяется,
+// так как относилась именно к исходному рецепту).
+function collectDayIngredients(day, dayIndex, getOverride) {
   const collected = [];
 
   MEAL_SLOTS.forEach((slot) => {
-    const recipeId = day[slot];
+    const overrideRecipeId = getOverride ? getOverride(dayIndex, slot) : null;
+    const recipeId = overrideRecipeId || day[slot];
+
     if (recipeId) {
       const recipe = RECIPES_BY_ID[recipeId];
       if (recipe) collected.push(...recipe.ingredients);
     }
 
-    const extraKey = `${slot}Extra`;
-    const extra = day[extraKey];
-    if (extra) {
-      const extraList = Array.isArray(extra) ? extra : [extra];
-      collected.push(...extraList);
+    if (!overrideRecipeId) {
+      const extraKey = `${slot}Extra`;
+      const extra = day[extraKey];
+      if (extra) {
+        const extraList = Array.isArray(extra) ? extra : [extra];
+        collected.push(...extraList);
+      }
     }
   });
 
@@ -96,10 +103,12 @@ function groupByCategory(aggregatedItems, categoriesMeta, multiplier) {
 // Главная функция: строит полный список покупок для недели.
 // categoriesMeta — объект CATEGORIES из recipes.js (label + order на каждую категорию)
 // multiplier — коэффициент порций, по умолчанию 1 (ровно по рецептам, без запаса)
-export function buildShoppingList(week, categoriesMeta, multiplier = 1) {
+// getOverride(dayIndex, mealSlot) — опциональная функция, возвращающая id рецепта-замены
+// (из useMealOverrides), если пользователь отредактировал план
+export function buildShoppingList(week, categoriesMeta, multiplier = 1, getOverride = null) {
   if (!week) return { long: [], fresh: [] };
 
-  const allIngredients = week.days.flatMap(collectDayIngredients);
+  const allIngredients = week.days.flatMap((day, dayIndex) => collectDayIngredients(day, dayIndex, getOverride));
   const aggregated = aggregateIngredients(allIngredients);
 
   const longItems = aggregated.filter((a) => a.shelfLife === 'long');
