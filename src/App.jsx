@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useContext, createContext } from '
 import {
   Utensils, UtensilsCrossed, CalendarDays, ShoppingCart, Sunrise, Zap, Cookie,
   ChevronDown, ChevronLeft, ChevronRight, Clock, Sun, Moon, X, ExternalLink,
-  Pencil, RotateCcw, User, Plus, Trash2,
+  Pencil, RotateCcw, User, Plus, Trash2, ChefHat, ImageOff, Check,
 } from 'lucide-react';
 import { RECIPES, RECIPES_BY_ID, MEAL_TYPES, CATEGORIES } from './data/recipes.js';
 import { WEEKS, getLatestWeek } from './data/weeks.js';
@@ -48,6 +48,15 @@ const MEAL_ICONS = {
 const MONO = "'JetBrains Mono', monospace";
 const DISPLAY = "'Space Grotesk', sans-serif";
 
+// Шаг рецепта может быть строкой (как сейчас) или объектом { text, detail, image }.
+// Нормализуем к единому виду, чтобы старые данные не ломались, а изображения
+// и расширенное описание можно было добавить позже, не меняя код.
+const normalizeStep = (s) => (
+  typeof s === 'string'
+    ? { text: s, detail: null, image: null }
+    : { text: s.text || '', detail: s.detail || null, image: s.image || null }
+);
+
 const isNightNow = () => {
   const h = new Date().getHours();
   return h >= 19 || h < 7;
@@ -58,18 +67,34 @@ const useTheme = () => useContext(ThemeContext);
 
 function useThemeController() {
   const [mode, setMode] = useState('auto');
-  const [autoIsDark, setAutoIsDark] = useState(isNightNow());
+  const [timeIsDark, setTimeIsDark] = useState(isNightNow());
+  const [tgScheme, setTgScheme] = useState(null); // 'light' | 'dark' | null (не в Telegram)
 
+  // Тайм-фолбэк для авто-режима вне Telegram
   useEffect(() => {
-    const id = setInterval(() => setAutoIsDark(isNightNow()), 60000);
+    const id = setInterval(() => setTimeIsDark(isNightNow()), 60000);
     return () => clearInterval(id);
   }, []);
 
+  // Внутри Telegram Mini App — сразу берём тему клиента и реагируем на её смену
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+    if (!tg) return;
+    try { tg.ready(); tg.expand(); } catch (e) { /* игнор */ }
+    const apply = () => setTgScheme(tg.colorScheme === 'dark' ? 'dark' : 'light');
+    apply();
+    tg.onEvent?.('themeChanged', apply);
+    return () => { try { tg.offEvent?.('themeChanged', apply); } catch (e) { /* игнор */ } };
+  }, []);
+
+  // В авто-режиме приоритет у темы Telegram; вне TG — по времени суток
+  const autoIsDark = tgScheme ? tgScheme === 'dark' : timeIsDark;
   const isDark = mode === 'auto' ? autoIsDark : mode === 'dark';
   const theme = isDark ? THEMES.dark : THEMES.light;
+  const usingTg = mode === 'auto' && tgScheme != null;
   const cycle = () => setMode((m) => (m === 'auto' ? 'light' : m === 'light' ? 'dark' : 'auto'));
 
-  return { theme, mode, isDark, cycle };
+  return { theme, mode, isDark, usingTg, cycle };
 }
 
 // Применяем тему Telegram, если открыто внутри Mini App
@@ -94,9 +119,11 @@ function MealIcon({ mealType, size = 16, ...rest }) {
   return <Icon size={size} {...rest} />;
 }
 
-function ThemeToggle({ mode, isDark, cycle }) {
+function ThemeToggle({ mode, isDark, cycle, usingTg }) {
   const t = useTheme();
-  const title = mode === 'auto' ? (isDark ? 'Авто · ночь' : 'Авто · день') : (isDark ? 'Тёмная' : 'Светлая');
+  const title = mode === 'auto'
+    ? (usingTg ? (isDark ? 'Авто · тема Telegram (тёмная)' : 'Авто · тема Telegram (светлая)') : (isDark ? 'Авто · ночь' : 'Авто · день'))
+    : (isDark ? 'Тёмная' : 'Светлая');
   return (
     <button
       onClick={cycle}
@@ -305,6 +332,7 @@ function RecipeDetail({ recipe, onClose }) {
   const t = useTheme();
   const touchRef = React.useRef({ y: 0, active: false });
   const scrollRef = React.useRef(null);
+  const [cooking, setCooking] = useState(false);
 
   if (!recipe) return null;
 
@@ -404,6 +432,18 @@ function RecipeDetail({ recipe, onClose }) {
           <MacroPlateDetailed protein={recipe.protein} fat={recipe.fat} carbs={recipe.carbs} />
         </div>
 
+        <button
+          onClick={() => setCooking(true)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            width: '100%', padding: '14px 0', borderRadius: 14, border: 'none', marginBottom: 22,
+            backgroundImage: t.ACCENT_GRAD, color: '#FFF', fontSize: 15, fontWeight: 700,
+            cursor: 'pointer', fontFamily: DISPLAY, boxShadow: `0 8px 22px -8px ${t.GLOW}`,
+          }}
+        >
+          <ChefHat size={18} /> Готовить по шагам
+        </button>
+
         <SectionLabel>Ингредиенты</SectionLabel>
         <div style={{ marginBottom: 22 }}>
           {recipe.ingredients.map((ing, i) => (
@@ -420,18 +460,21 @@ function RecipeDetail({ recipe, onClose }) {
 
         <SectionLabel>Способ приготовления</SectionLabel>
         <div style={{ marginBottom: 22, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {recipe.steps.map((step, i) => (
-            <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              <span style={{
-                flexShrink: 0, width: 24, height: 24, borderRadius: '50%', background: t.BG_INPUT,
-                border: `1px solid ${t.BORDER}`, color: t.ACCENT, fontSize: 12, fontWeight: 800,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, fontFamily: MONO,
-              }}>
-                {i + 1}
-              </span>
-              <span style={{ fontSize: 14.5, color: t.TEXT, lineHeight: 1.55, paddingTop: 2 }}>{step}</span>
-            </div>
-          ))}
+          {recipe.steps.map((step, i) => {
+            const s = normalizeStep(step);
+            return (
+              <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <span style={{
+                  flexShrink: 0, width: 24, height: 24, borderRadius: '50%', background: t.BG_INPUT,
+                  border: `1px solid ${t.BORDER}`, color: t.ACCENT, fontSize: 12, fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, fontFamily: MONO,
+                }}>
+                  {i + 1}
+                </span>
+                <span style={{ fontSize: 14.5, color: t.TEXT, lineHeight: 1.55, paddingTop: 2 }}>{s.text}</span>
+              </div>
+            );
+          })}
         </div>
 
         {recipe.link && (
@@ -463,6 +506,145 @@ function RecipeDetail({ recipe, onClose }) {
           </div>
           <p style={{ fontSize: 13.5, color: t.TEXT_DIM, lineHeight: 1.5, margin: 0 }}>{recipe.tip}</p>
         </div>
+      </div>
+
+      {cooking && <StepByStepCook recipe={recipe} onClose={() => setCooking(false)} />}
+    </div>
+  );
+}
+
+// ---------- Пошаговый режим готовки (один шаг на весь экран) ----------
+
+function StepByStepCook({ recipe, onClose }) {
+  const t = useTheme();
+  const steps = useMemo(() => (recipe.steps || []).map(normalizeStep), [recipe]);
+  const total = steps.length;
+  const [idx, setIdx] = useState(0);
+  const touch = React.useRef({ x: 0, active: false });
+
+  const step = steps[idx] || { text: '', detail: null, image: null };
+  const isFirst = idx === 0;
+  const isLast = idx >= total - 1;
+  const go = (d) => setIdx((i) => Math.max(0, Math.min(total - 1, i + d)));
+
+  const onTouchStart = (e) => { touch.current = { x: e.touches[0].clientX, active: true }; };
+  const onTouchEnd = (e) => {
+    if (!touch.current.active) return;
+    touch.current.active = false;
+    const dx = e.changedTouches[0].clientX - touch.current.x;
+    if (dx <= -50 && !isLast) go(1);
+    else if (dx >= 50 && !isFirst) go(-1);
+  };
+
+  return (
+    <div
+      className="recipe-detail-enter"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80, background: t.BG,
+        display: 'flex', flexDirection: 'column',
+        padding: 'max(16px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left))',
+        boxSizing: 'border-box', maxWidth: 480, margin: '0 auto',
+      }}
+    >
+      {/* Шапка: прогресс + закрыть */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, color: t.TEXT_FAINT, fontFamily: MONO, textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 8 }}>
+            Шаг {idx + 1} из {total}
+          </div>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {steps.map((_, i) => (
+              <div key={i} style={{
+                flex: 1, height: 4, borderRadius: 2,
+                background: i <= idx ? undefined : t.BORDER,
+                backgroundImage: i <= idx ? t.ACCENT_GRAD : undefined,
+                transition: 'background 0.3s ease',
+              }} />
+            ))}
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          aria-label="Закрыть пошаговый режим"
+          style={{
+            flexShrink: 0, width: 38, height: 38, borderRadius: 12, border: `1px solid ${t.BORDER}`,
+            background: t.BG_INPUT, color: t.TEXT_DIM, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <X size={17} />
+        </button>
+      </div>
+
+      {/* Тело шага: изображение + описание, прокручиваемое */}
+      <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0 }}>
+        <div style={{
+          width: '100%', aspectRatio: '4 / 3', borderRadius: 22, marginBottom: 20, overflow: 'hidden',
+          background: t.BG_RAISED, border: `1px ${step.image ? 'solid' : 'dashed'} ${t.BORDER}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {step.image ? (
+            <img src={step.image} alt={`Шаг ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, color: t.TEXT_FAINT, padding: 20, textAlign: 'center' }}>
+              <ImageOff size={30} />
+              <span style={{ fontSize: 12.5, fontFamily: MONO, lineHeight: 1.5 }}>Фото для этого шага<br />пока не добавлено</span>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <span style={{
+            flexShrink: 0, width: 34, height: 34, borderRadius: '50%',
+            backgroundImage: t.ACCENT_GRAD, color: '#FFF', fontSize: 15, fontWeight: 800,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: DISPLAY,
+          }}>
+            {idx + 1}
+          </span>
+          <span style={{ fontSize: 12.5, color: t.TEXT_FAINT, fontFamily: MONO, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {recipe.title}
+          </span>
+        </div>
+
+        <p style={{ fontSize: 19, color: t.TEXT, lineHeight: 1.55, margin: '0 0 14px', fontWeight: 500 }}>
+          {step.text}
+        </p>
+        {step.detail && (
+          <p style={{ fontSize: 14.5, color: t.TEXT_DIM, lineHeight: 1.6, margin: 0 }}>
+            {step.detail}
+          </p>
+        )}
+      </div>
+
+      {/* Навигация */}
+      <div style={{ display: 'flex', gap: 10, paddingTop: 14 }}>
+        <button
+          onClick={() => go(-1)}
+          disabled={isFirst}
+          style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '14px 0', borderRadius: 14, border: `1px solid ${t.BORDER}`,
+            background: t.BG_INPUT, color: isFirst ? t.TEXT_FAINT : t.TEXT,
+            opacity: isFirst ? 0.5 : 1, cursor: isFirst ? 'default' : 'pointer',
+            fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit',
+          }}
+        >
+          <ChevronLeft size={18} /> Назад
+        </button>
+        <button
+          onClick={() => (isLast ? onClose() : go(1))}
+          style={{
+            flex: 1.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '14px 0', borderRadius: 14, border: 'none',
+            backgroundImage: t.ACCENT_GRAD, color: '#FFF',
+            cursor: 'pointer', fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit',
+            boxShadow: `0 8px 22px -8px ${t.GLOW}`,
+          }}
+        >
+          {isLast ? (<><Check size={18} /> Готово</>) : (<>Следующий шаг <ChevronRight size={18} /></>)}
+        </button>
       </div>
     </div>
   );
@@ -794,16 +976,16 @@ function SupplementRow({ supplement, onUpdate, onRemove }) {
             onChange={(e) => setLocal((l) => ({ ...l, amount: e.target.value === '' ? null : parseFloat(e.target.value) }))}
             placeholder="Порция"
             style={{
-              flex: 1, border: `1px solid ${t.BORDER}`, background: t.BG_INPUT, color: t.TEXT,
+              flex: 1, minWidth: 0, border: `1px solid ${t.BORDER}`, background: t.BG_INPUT, color: t.TEXT,
               borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box',
             }}
           />
           <input
             value={local.unit ?? ''}
             onChange={(e) => setLocal((l) => ({ ...l, unit: e.target.value }))}
-            placeholder="Единица (г/мг/капсула)"
+            placeholder="Ед-ца (г/мг/капс.)"
             style={{
-              flex: 1.4, border: `1px solid ${t.BORDER}`, background: t.BG_INPUT, color: t.TEXT,
+              flex: 1.4, minWidth: 0, border: `1px solid ${t.BORDER}`, background: t.BG_INPUT, color: t.TEXT,
               borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box',
             }}
           />
@@ -1590,7 +1772,7 @@ function ProfileField({ label, value, unit, onChange, step = 1 }) {
   );
 }
 
-function NutritionAppInner({ mode, isDark, cycle }) {
+function NutritionAppInner({ mode, isDark, cycle, usingTg }) {
   const t = useTheme();
   const TAB_ORDER = ['recipes', 'plan', 'shopping'];
   const [tab, setTab] = useState('plan');
@@ -1700,7 +1882,7 @@ function NutritionAppInner({ mode, isDark, cycle }) {
           >
             <User size={16} />
           </button>
-          <ThemeToggle mode={mode} isDark={isDark} cycle={cycle} />
+          <ThemeToggle mode={mode} isDark={isDark} cycle={cycle} usingTg={usingTg} />
         </div>
       </div>
 
@@ -1725,10 +1907,10 @@ function NutritionAppInner({ mode, isDark, cycle }) {
 }
 
 export default function NutritionApp() {
-  const { theme, mode, isDark, cycle } = useThemeController();
+  const { theme, mode, isDark, usingTg, cycle } = useThemeController();
   return (
     <ThemeContext.Provider value={theme}>
-      <NutritionAppInner mode={mode} isDark={isDark} cycle={cycle} />
+      <NutritionAppInner mode={mode} isDark={isDark} cycle={cycle} usingTg={usingTg} />
     </ThemeContext.Provider>
   );
 }
