@@ -3,7 +3,7 @@
 // не привязан к неделе (БАДы принимаются постоянно).
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured } from './supabase.js';
+import { supabase, isSupabaseConfigured, isMissingTableError } from './supabase.js';
 
 const TABLE = 'supplements';
 
@@ -41,8 +41,12 @@ export function useSupplements() {
         .select('*')
         .order('sort_order', { ascending: true });
       if (err) {
-        console.error('Supabase supplements select error:', err);
-        setError(`Не удалось загрузить БАДы: ${err.message || err.code}`);
+        if (isMissingTableError(err)) {
+          console.warn('Таблица supplements не найдена — запусти supabase/schema.sql.', err);
+        } else {
+          console.error('Supabase supplements select error:', err);
+          setError(`Не удалось загрузить БАДы: ${err.message || err.code}`);
+        }
       } else if (data && data.length > 0) {
         setSupplements(data.map(rowToSupplement));
       } else if (data && data.length === 0) {
@@ -72,7 +76,7 @@ export function useSupplements() {
       .insert([{ ...supplement, sort_order: nextSortOrder }])
       .select()
       .single();
-    if (err) {
+    if (err && !isMissingTableError(err)) {
       console.error('Supabase supplement insert error:', err);
       setError(`Не удалось сохранить БАД: ${err.message || err.code}`);
     } else if (data) {
@@ -90,7 +94,7 @@ export function useSupplements() {
     if ('timing' in patch) dbPatch.timing = patch.timing;
     dbPatch.updated_at = new Date().toISOString();
     const { error: err } = await supabase.from(TABLE).update(dbPatch).eq('id', id);
-    if (err) {
+    if (err && !isMissingTableError(err)) {
       console.error('Supabase supplement update error:', err);
       setError(`Не удалось сохранить изменение: ${err.message || err.code}`);
     }
@@ -100,7 +104,7 @@ export function useSupplements() {
     setSupplements((prev) => prev.filter((s) => s.id !== id));
     if (!isSupabaseConfigured || id.startsWith('temp-')) return;
     const { error: err } = await supabase.from(TABLE).delete().eq('id', id);
-    if (err) {
+    if (err && !isMissingTableError(err)) {
       console.error('Supabase supplement delete error:', err);
       setError(`Не удалось удалить БАД: ${err.message || err.code}`);
     }

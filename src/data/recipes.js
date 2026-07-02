@@ -15,11 +15,11 @@
 // показывается как факт использования без суммирования числа.
 
 export const MEAL_TYPES = {
-  breakfast: { label: 'Завтрак', icon: '🌅', order: 0 },
-  lunch: { label: 'Обед', icon: '🍲', order: 1 },
-  pretrain: { label: 'Предтрен', icon: '⚡', order: 2 },
-  dinner: { label: 'Ужин', icon: '🌙', order: 3 },
-  snack: { label: 'Доп. перекус', icon: '🥜', order: 4 },
+  breakfast: { label: 'Завтрак', icon: '🌅', lucide: 'sunrise', order: 0 },
+  lunch: { label: 'Обед', icon: '🍲', lucide: 'utensils-crossed', order: 1 },
+  pretrain: { label: 'Предтрен', icon: '⚡', lucide: 'zap', order: 2 },
+  dinner: { label: 'Ужин', icon: '🌙', lucide: 'moon', order: 3 },
+  snack: { label: 'Доп. перекус', icon: '🥜', lucide: 'cookie', order: 4 },
 };
 
 export const CATEGORIES = {

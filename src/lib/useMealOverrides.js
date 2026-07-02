@@ -13,7 +13,7 @@
 // Уникальный ключ: (week_id, day_index, meal_slot)
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured } from './supabase.js';
+import { supabase, isSupabaseConfigured, isMissingTableError } from './supabase.js';
 
 const TABLE = 'meal_overrides';
 
@@ -21,6 +21,7 @@ export function useMealOverrides(weekId) {
   const [overrides, setOverrides] = useState({}); // { "dayIndex:mealSlot": recipeId }
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(null);
+  const [schemaMissing, setSchemaMissing] = useState(false);
 
   useEffect(() => {
     if (!weekId) return;
@@ -38,9 +39,17 @@ export function useMealOverrides(weekId) {
           .eq('week_id', weekId);
         if (cancelled) return;
         if (err) {
-          console.error('Supabase select error:', err);
-          setError(`Не удалось загрузить изменения плана: ${err.message || err.code || 'неизвестная ошибка'}`);
+          if (isMissingTableError(err)) {
+            // Схема ещё не применена — работаем на дефолтном плане, без красной ошибки
+            console.warn('Таблица meal_overrides не найдена — запусти supabase/schema.sql.', err);
+            setSchemaMissing(true);
+            setError(null);
+          } else {
+            console.error('Supabase select error:', err);
+            setError(`Не удалось загрузить изменения плана: ${err.message || err.code || 'неизвестная ошибка'}`);
+          }
         } else {
+          setSchemaMissing(false);
           const map = {};
           (data || []).forEach((row) => {
             map[`${row.day_index}:${row.meal_slot}`] = row.recipe_id;
@@ -74,7 +83,7 @@ export function useMealOverrides(weekId) {
           .eq('week_id', weekId)
           .eq('day_index', dayIndex)
           .eq('meal_slot', mealSlot);
-        if (err) setError('Не удалось сохранить изменение');
+        if (err && !isMissingTableError(err)) setError('Не удалось сохранить изменение');
       }
       return;
     }
@@ -94,7 +103,7 @@ export function useMealOverrides(weekId) {
           },
           { onConflict: 'week_id,day_index,meal_slot' }
         );
-      if (err) setError('Не удалось сохранить изменение');
+      if (err && !isMissingTableError(err)) setError('Не удалось сохранить изменение');
     }
   }, [weekId]);
 
@@ -106,5 +115,5 @@ export function useMealOverrides(weekId) {
     return Object.prototype.hasOwnProperty.call(overrides, `${dayIndex}:${mealSlot}`);
   }, [overrides]);
 
-  return { loaded, error, setError, getOverride, hasOverride, setOverride, isSupabaseConfigured };
+  return { loaded, error, schemaMissing, setError, getOverride, hasOverride, setOverride, isSupabaseConfigured };
 }

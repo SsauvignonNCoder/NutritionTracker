@@ -3,7 +3,7 @@
 // Сайт без логина — профиль один, общий (id = 'main').
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured } from './supabase.js';
+import { supabase, isSupabaseConfigured, isMissingTableError } from './supabase.js';
 
 const TABLE = 'user_profile';
 const ROW_ID = 'main';
@@ -49,8 +49,12 @@ export function useProfile() {
           .maybeSingle();
         if (cancelled) return;
         if (err) {
-          console.error('Supabase profile select error:', err);
-          setError(`Не удалось загрузить профиль: ${err.message || err.code}`);
+          if (isMissingTableError(err)) {
+            console.warn('Таблица user_profile не найдена — запусти supabase/schema.sql.', err);
+          } else {
+            console.error('Supabase profile select error:', err);
+            setError(`Не удалось загрузить профиль: ${err.message || err.code}`);
+          }
         } else if (data) {
           setProfile(rowToProfile(data));
         }
@@ -83,7 +87,7 @@ export function useProfile() {
           },
           { onConflict: 'id' }
         );
-      if (err) {
+      if (err && !isMissingTableError(err)) {
         console.error('Supabase profile save error:', err);
         setError(`Не удалось сохранить профиль: ${err.message || err.code}`);
       }
